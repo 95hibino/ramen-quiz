@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="写真は仮素材です">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF8EE"/>
+      <stop offset="1" stop-color="#F2E2C4"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <text x="400" y="280" text-anchor="middle" font-size="180" font-family="Apple Color Emoji, Segoe UI Emoji, sans-serif">🍜</text>
+  <text x="400" y="380" text-anchor="middle" font-size="32" font-family="Hiragino Sans, Yu Gothic, sans-serif" font-weight="700" fill="#6B4226">写真は仮素材です</text>
+  <text x="400" y="425" text-anchor="middle" font-size="20" font-family="Hiragino Sans, Yu Gothic, sans-serif" fill="#6B4226" opacity="0.7">本番素材は順次差し替え予定</text>
+</svg>

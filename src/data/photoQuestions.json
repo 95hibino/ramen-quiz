@@ -1,0 +1,50 @@
+[
+  {
+    "id": "photo-016",
+    "imageUrl": "/photo_quiz/IMG_20260424_170735042_HDR.jpg",
+    "ramenType": "tonkotsu",
+    "prefecture": "神奈川県",
+    "photoType": "ramen",
+    "difficulty": "high",
+    "noodleThickness": "straight",
+    "question": "この画像はどこの店のものですか？",
+    "options": [
+      "たかさご家",
+      "六角家",
+      "吉村家",
+      "環2家"
+    ],
+    "answerIdx": 1,
+    "explanation": "たかさご家。横浜市の日ノ出町（本店）や関内などに店舗を構える、1992年創業の老舗の横浜家系ラーメン店",
+    "shopInfo": {
+      "name": "たかさご家。",
+      "area": "神奈川県横浜市",
+      "genre": "豚骨 (ご当地)",
+      "description": "半濁スープ + 中太ストレート麺。"
+    }
+  },
+  {
+    "id": "photo-017",
+    "imageUrl": "/photo_quiz/IMG_20260405_131248434_HDR.jpg",
+    "ramenType": "tonkotsu",
+    "prefecture": "東京都",
+    "photoType": "ramen",
+    "difficulty": "high",
+    "noodleThickness": "straight",
+    "question": "この画像はどこの店のものですか？",
+    "options": [
+      "Hi-Fat Noodle Butchers",
+      "ラーメン二郎　亀戸店",
+      "江戸川ヌードル悪代官",
+      "MEN YARD FIGHT"
+    ],
+    "answerIdx": 0,
+    "explanation": "東京都江戸川区にある二郎系ラーメン屋",
+    "shopInfo": {
+      "name": "Hi-Fat Noodle Butchers。",
+      "area": "東京都江戸川区",
+      "genre": "豚骨 (二郎系)",
+      "description": "非乳化スープ + 中太ちぢれ麺。"
+    }
+  }
+]

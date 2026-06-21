@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- ラーメンクイズ デフォルト OGP 画像 (1200x630 OG 推奨サイズ)。
+       Phase 2 暫定。Phase 3 で動的生成 (@vercel/og 等) へ置き換え予定。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff7ed"/>
+      <stop offset="100%" stop-color="#fde6c4"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- 装飾: 横アクセントライン -->
+  <rect x="0" y="0" width="1200" height="14" fill="url(#accent)"/>
+  <rect x="0" y="616" width="1200" height="14" fill="url(#accent)"/>
+
+  <!-- 中央のラーメン丼 絵文字 (大きく) -->
+  <text x="600" y="305"
+        font-size="240"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Twemoji Mozilla',sans-serif">🍜</text>
+
+  <!-- メインタイトル -->
+  <text x="600" y="455"
+        font-size="92"
+        font-weight="900"
+        text-anchor="middle"
+        fill="#3f2a1a"
+        font-family="'Noto Sans JP','Hiragino Sans','Meiryo',system-ui,sans-serif">ラーメンクイズ</text>
+
+  <!-- サブコピー -->
+  <text x="600" y="528"
+        font-size="36"
+        font-weight="500"
+        text-anchor="middle"
+        fill="#7a5530"
+        font-family="'Noto Sans JP','Hiragino Sans','Meiryo',system-ui,sans-serif">ラーメンの歴史・地域・文化を 4 択で楽しく学ぼう</text>
+
+  <!-- ハッシュタグ風アクセント -->
+  <text x="600" y="585"
+        font-size="28"
+        font-weight="700"
+        text-anchor="middle"
+        fill="#dc2626"
+        font-family="'Noto Sans JP','Hiragino Sans','Meiryo',system-ui,sans-serif">#ラーメンクイズ  #ラーメン愛好家</text>
+</svg>
