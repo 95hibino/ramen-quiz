@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PhotoQuestion } from '@/types/photoQuestion';
+import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
 import { ReportModal } from './ReportModal';
@@ -98,6 +99,9 @@ export function PhotoQuizCard({
               <p className="mt-2 text-xs text-ramen-soy/70">{question.shopInfo.description}</p>
             ) : null}
           </div>
+
+          {/* 店舗情報の直下に提携広告（予約サイト等）。環境変数未設定なら非表示。 */}
+          <AffiliateBanner slot="photo-shop-info" />
         </div>
       ) : null}
 

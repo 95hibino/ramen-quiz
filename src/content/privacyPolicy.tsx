@@ -88,6 +88,17 @@ export function PrivacyPolicyContent(): JSX.Element {
             <span className="font-bold">Google AdSense（将来導入予定）:</span>{' '}
             広告配信のため Cookie を用いた行動ターゲティング広告を将来的に利用する予定です。導入後は本ポリシーを更新します。
           </li>
+          <li>
+            <span className="font-bold">アフィリエイトプロバイダ:</span>{' '}
+            本サービスは以下のアフィリエイトサービスを通じて提携広告（アフィリエイトリンク）を掲載する場合があります。
+            これらのサービスは Cookie やトラッキング技術により、リンク経由の遷移・成果計測等を行います。
+            <ul className="ml-5 mt-1 list-[circle] space-y-0.5">
+              <li>楽天アフィリエイト（楽天グループ株式会社）</li>
+              <li>A8.net（株式会社ファンコミュニケーションズ）</li>
+              <li>もしもアフィリエイト（株式会社もしも）</li>
+              <li>Amazon アソシエイト・プログラム（Amazon.com, Inc. および関連会社）</li>
+            </ul>
+          </li>
         </ul>
       </section>
 
@@ -106,6 +117,15 @@ export function PrivacyPolicyContent(): JSX.Element {
             広告設定
           </a>
           ページからいつでも無効化できます。
+        </p>
+        <p>
+          また、本サービスは上記アフィリエイトプロバイダ（楽天アフィリエイト・A8.net・もしもアフィリエイト・Amazon アソシエイト）の
+          リンクを掲載する場合があり、これらの事業者の Cookie やトラッキング技術が使用される可能性があります。
+          アフィリエイトリンクには景品表示法（ステルスマーケティング規制）に基づき
+          <span className="font-bold">「PR」「広告」「提携リンク」</span>等の表記を必ず付与し、
+          利用者が広告であることを明確に認識できるようにしています。
+          なお、当サービスは Amazon.co.jp を宣伝しリンクすることによってサイトが紹介料を獲得できる手段を提供することを目的に設定された
+          アフィリエイトプログラムである、Amazon アソシエイト・プログラムの参加者です。
         </p>
       </section>
 

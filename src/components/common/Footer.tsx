@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AdBanner } from './AdBanner';
+import { AffiliateBanner } from './AffiliateBanner';
 
 /**
  * フッター。
@@ -15,6 +16,10 @@ export function Footer(): JSX.Element {
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-4 py-6">
         {/* design §3.3: フッター 320x50 モバイルバナー */}
         <AdBanner slot="footer" size="mobile-banner" />
+        {/* 小さく目立たないアフィリエイト枠（環境変数未設定なら非表示）。 */}
+        <div className="w-full max-w-sm text-xs">
+          <AffiliateBanner slot="footer" />
+        </div>
         <nav
           aria-label="法務・運営情報"
           className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs"

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AdBanner } from '@/components/common/AdBanner';
+import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
 import { buildSiteUrl } from '@/config/site';
@@ -94,6 +95,9 @@ export function Home(): JSX.Element {
           />
         </div>
       </section>
+
+      {/* ホーム下部のアフィリエイト枠（環境変数未設定なら非表示）。 */}
+      <AffiliateBanner slot="home-bottom" />
     </div>
   );
 }

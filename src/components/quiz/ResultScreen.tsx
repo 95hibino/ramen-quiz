@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { AnswerRecord, QuizCategory, QuizQuestion } from '@/types/quiz';
 import type { PhotoQuestion } from '@/types/photoQuestion';
 import { AdBanner } from '@/components/common/AdBanner';
+import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { ShareButtons } from '@/components/common/ShareButtons';
 import { maxPossibleScore } from '@/lib/score';
 import { CATEGORY_META } from '@/config/quizConfig';
@@ -111,6 +112,9 @@ export function ResultScreen({
 
       {/* design §3.3: 結果画面 300x250 Medium Rectangle */}
       <AdBanner slot="result" size="medium-rectangle" />
+
+      {/* AdSense 枠の少し下に「あわせて読みたい」感覚でアフィリエイトを配置。 */}
+      <AffiliateBanner slot="result-bottom" />
 
       <div className="card">
         <h3 className="mb-3 text-lg font-bold text-ramen-soy">回答の振り返り</h3>

@@ -29,6 +29,14 @@ interface ImportMetaEnv {
   readonly VITE_OPERATOR_NAME?: string;
   /** プライバシーポリシー等に表示する運営者連絡先 (メールアドレス)。 */
   readonly VITE_OPERATOR_CONTACT?: string;
+  /** アフィリエイト URL: 楽天アフィリエイト・お取り寄せラーメンランキング。未設定なら該当枠は非表示。 */
+  readonly VITE_AFF_RAKUTEN_RAMEN_RANKING?: string;
+  /** アフィリエイト URL: A8.net・食べログ予約。未設定なら該当枠は非表示。 */
+  readonly VITE_AFF_A8_TABELOG?: string;
+  /** アフィリエイト URL: もしもアフィリエイト・ラーメン関連商品。未設定なら該当枠は非表示。 */
+  readonly VITE_AFF_MOSHIMO_RAMEN?: string;
+  /** アフィリエイト URL: Amazon アソシエイト・ラーメン関連書籍。未設定なら該当枠は非表示。 */
+  readonly VITE_AFF_AMAZON_RAMEN_BOOKS?: string;
 }
 
 interface ImportMeta {
