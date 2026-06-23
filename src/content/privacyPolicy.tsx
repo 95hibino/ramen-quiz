@@ -27,7 +27,7 @@ export function PrivacyPolicyContent(): JSX.Element {
         </p>
         <ul className="ml-5 list-disc space-y-1">
           <li>
-            <span className="font-bold">運営者:</span> {OPERATOR_NAME}
+            <span className="font-bold">運営者:</span> {OPERATOR_NAME}（個人運営）
           </li>
           <li>
             <span className="font-bold">連絡先:</span> {OPERATOR_CONTACT}

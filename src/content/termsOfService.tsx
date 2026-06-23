@@ -18,8 +18,7 @@ export function TermsOfServiceContent(): JSX.Element {
   return (
     <div className="space-y-6 text-sm leading-relaxed text-ramen-soy/90">
       <p>
-        本利用規約（以下「本規約」）は、{OPERATOR_NAME}
-        （以下「当方」）が提供するラーメンクイズ（以下「本サービス」）の利用条件を定めるものです。
+        本利用規約（以下「本規約」）は、{OPERATOR_NAME}（個人運営。以下「当方」）が提供するラーメンクイズ（以下「本サービス」）の利用条件を定めるものです。
         本サービスをご利用いただいた時点で、本規約に同意したものとみなします。
       </p>
 
