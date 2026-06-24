@@ -3,20 +3,57 @@ import { AdBanner } from '@/components/common/AdBanner';
 import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
-import { buildSiteUrl } from '@/config/site';
+import { StructuredData } from '@/components/common/StructuredData';
+import { buildSiteUrl, SITE_NAME } from '@/config/site';
+import { OPERATOR_CONTACT, OPERATOR_NAME } from '@/content/legalMeta';
 
 export function Home(): JSX.Element {
-  const shareUrl = buildSiteUrl('/');
+  const siteUrl = buildSiteUrl('/');
   const shareText =
     '🍜 ラーメンクイズで知識を試そう！\n歴史・地域・文化を 4 択で楽しく学べる無料アプリです。';
+
+  // Schema.org: サイト全体を示す WebSite + 運営者の Organization。
+  // AI 検索エンジン (SearchGPT / Perplexity / Google AI Overviews) からの引用機会を高める。
+  // 運営者情報は legalMeta.ts の定数を参照 (環境変数で上書き可能、プレースホルダ「（…）」のままなら email を省略)。
+  const organizationSchema: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: OPERATOR_NAME,
+    url: siteUrl,
+  };
+  if (!OPERATOR_CONTACT.startsWith('（')) {
+    organizationSchema.email = OPERATOR_CONTACT;
+  }
+  const structuredData: Record<string, unknown>[] = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url: siteUrl,
+      description:
+        'ラーメンの歴史・地域・文化・製麺まで、奥深いラーメン知識を 4 択クイズで楽しく学べる無料 Web アプリ。',
+      inLanguage: 'ja',
+    },
+    organizationSchema,
+  ];
 
   return (
     <div className="space-y-8">
       <Seo
         title="トップ"
-        description="ラーメンの歴史・地域・文化・製麺まで、奥深いラーメン知識を 4 択クイズで楽しく学ぼう。"
+        description="ラーメンに関する 4 択クイズ Web アプリ。基礎知識から地域文化、上級マニアックな知識まで全 150 問。写真当てクイズも遊べる無料サービス。"
         url="/"
+        keywords={[
+          'ラーメン',
+          'ラーメンクイズ',
+          'クイズ',
+          '4択クイズ',
+          'ご当地ラーメン',
+          'ラーメン雑学',
+          '写真当てクイズ',
+        ]}
       />
+      <StructuredData schema={structuredData} />
       {/* design §3.3: トップページ/ヘッダー下 728x90 Leaderboard */}
       <AdBanner slot="home-top" size="leaderboard" />
 
@@ -89,7 +126,7 @@ export function Home(): JSX.Element {
         <div className="mt-3">
           <ShareButtons
             text={shareText}
-            url={shareUrl}
+            url={siteUrl}
             hashtags={['ラーメンクイズ', 'ラーメン愛好家']}
             ariaLabel="サイト全体のシェア"
           />

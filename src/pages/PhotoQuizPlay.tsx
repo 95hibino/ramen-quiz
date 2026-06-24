@@ -113,6 +113,7 @@ export function PhotoQuizPlay(): JSX.Element {
         title="写真当てクイズ プレイ中"
         description="ラーメン写真当てクイズに挑戦中"
         url="/quiz/photo/play"
+        noIndex
       />
       <ScoreBar
         currentIndex={currentIndex}

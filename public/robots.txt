@@ -1,0 +1,39 @@
+# ラーメンクイズ robots.txt
+# 全クローラーに対しサイト全体を許可。AI クローラー（生成 AI 検索エンジン）も
+# 明示的に許可することで、AI 検索（SearchGPT / Perplexity / Google AI Overviews 等）からの
+# 引用・露出機会を最大化する。
+#
+# 個別のユーザー固有ページ（/result, /mypage, /login, /signup, /quiz/photo/play,
+# /quiz/photo/submit）は SPA の状態に依存し、直接アクセスではほぼ意味のあるコンテンツを
+# 持たないため sitemap には含めていない（ただし robots では明示的に disallow はしていない:
+# クローラーが偶発的にクロールしても害はないため）。
+
+User-agent: *
+Allow: /
+
+# 主要 AI クローラー（2024 提唱の慣行に従って明示許可）
+User-agent: GPTBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://ramen-quiz-ten.vercel.app/sitemap.xml

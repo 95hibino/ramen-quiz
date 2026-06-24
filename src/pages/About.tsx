@@ -1,13 +1,27 @@
 import { Link } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
+import { StructuredData } from '@/components/common/StructuredData';
+import { buildSiteUrl, SITE_NAME } from '@/config/site';
 
 export function About(): JSX.Element {
+  const aboutSchema: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'AboutPage',
+    name: `${SITE_NAME} について`,
+    description:
+      'ラーメンクイズの趣旨・データソース・運営方針・技術構成について説明するページ。',
+    url: buildSiteUrl('/about'),
+    inLanguage: 'ja',
+  };
+
   return (
     <div className="card space-y-4">
       <Seo
         title="このサイトについて"
-        description="ラーメンクイズの趣旨・データソース・Phase 計画について。"
+        description="ラーメンクイズの趣旨・データソース・運営方針について。ラーメンの歴史・地域文化・製麺技術を 4 択クイズで楽しく学べる無料サービスです。"
+        url="/about"
       />
+      <StructuredData schema={aboutSchema} />
       <h1 className="text-2xl font-black text-ramen-soy">このサイトについて</h1>
       <p className="text-sm leading-relaxed text-ramen-soy/80">
         本サイトはラーメンの歴史・地域・文化・製麺技術などを楽しく学べる 4 択クイズアプリです。

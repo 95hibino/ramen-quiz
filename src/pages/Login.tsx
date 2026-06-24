@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { Seo } from '@/components/common/Seo';
 
 /** ログインページ。 */
 export function Login(): JSX.Element {
@@ -28,6 +29,12 @@ export function Login(): JSX.Element {
 
   return (
     <div className="card mx-auto max-w-md space-y-5">
+      <Seo
+        title="ログイン"
+        description="ラーメンクイズにログインしてスコアを記録しよう。"
+        url="/login"
+        noIndex
+      />
       <h1 className="text-2xl font-black text-ramen-soy">ログイン</h1>
 
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>

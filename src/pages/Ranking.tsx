@@ -31,8 +31,9 @@ export function Ranking(): JSX.Element {
     <div className="space-y-6">
       <Seo
         title="ランキング"
-        description="ラーメンクイズの全プレイヤー累計スコアランキング。上位を目指してチャレンジしよう。"
+        description="ラーメンクイズのランキング。全プレイヤーの累計スコアと順位を表示。あなたの順位は？上位を目指して挑戦しよう。"
         url="/ranking"
+        keywords={['ラーメンクイズ', 'ランキング', 'クイズスコア', 'ラーメン愛好家']}
       />
       <div className="card">
         <h1 className="text-2xl font-black text-ramen-soy">ランキング (上位 {RANKING_LIMIT} 名)</h1>

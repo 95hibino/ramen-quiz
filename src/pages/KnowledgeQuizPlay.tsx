@@ -5,6 +5,7 @@ import { QuizCard } from '@/components/quiz/QuizCard';
 import { Timer } from '@/components/common/Timer';
 import { ScoreBar } from '@/components/quiz/ScoreBar';
 import { AdBanner } from '@/components/common/AdBanner';
+import { Seo } from '@/components/common/Seo';
 import { useTimer } from '@/hooks/useTimer';
 import {
   AD_INTERVAL_QUESTIONS,
@@ -111,6 +112,12 @@ export function KnowledgeQuizPlay(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <Seo
+        title="知識クイズ プレイ中"
+        description="ラーメン知識クイズに挑戦中。残り時間内に 4 択から正解を選ぼう。"
+        url={`/quiz/knowledge/${categoryId ?? ''}`}
+        noIndex
+      />
       <ScoreBar
         currentIndex={currentIndex}
         totalQuestions={questions.length}

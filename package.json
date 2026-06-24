@@ -6,7 +6,7 @@
   "description": "ラーメンクイズWebアプリ (Phase 1 MVP)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && tsx scripts/generate-sitemap.ts",
     "preview": "vite preview",
     "start": "vite preview",
     "lint": "tsc --noEmit"
@@ -27,6 +27,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.10",
+    "tsx": "^4.19.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.3"
   }

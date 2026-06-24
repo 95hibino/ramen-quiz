@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useScoreStore } from '@/stores/scoreStore';
 import { ResultScreen } from '@/components/quiz/ResultScreen';
 import { Seo } from '@/components/common/Seo';
+import { StructuredData } from '@/components/common/StructuredData';
+import { buildSiteUrl } from '@/config/site';
 
 /**
  * 結果画面 (知識クイズ / 写真当てクイズ 共通)。
@@ -105,9 +107,42 @@ export function Result(): JSX.Element {
   const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
   const seoDescription = `ラーメンクイズで ${totalScore}点 を獲得！あなたもラーメン知識を試してみよう。`;
 
+  // BreadcrumbList: ホーム → クイズ一覧 → 結果。
+  // 結果画面はユーザーの個別状態に依存するため検索エンジンには noIndex を伝える。
+  const quizListUrl =
+    activeQuizType === 'photo'
+      ? buildSiteUrl('/quiz/photo')
+      : buildSiteUrl('/quiz/knowledge');
+  const quizListLabel = activeQuizType === 'photo' ? '写真当てクイズ' : '知識クイズ';
+  const breadcrumbSchema: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'ホーム',
+        item: buildSiteUrl('/'),
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: quizListLabel,
+        item: quizListUrl,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: 'クイズ結果',
+        item: buildSiteUrl('/result'),
+      },
+    ],
+  };
+
   return (
     <>
-      <Seo title="クイズ結果" description={seoDescription} url="/result" />
+      <Seo title="クイズ結果" description={seoDescription} url="/result" noIndex />
+      <StructuredData schema={breadcrumbSchema} />
       <ResultScreen
         quizType={activeQuizType}
         questions={questions}

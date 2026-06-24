@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useScoreStore } from '@/stores/scoreStore';
 import { CATEGORY_META } from '@/config/quizConfig';
 import type { QuizCategory } from '@/types/quiz';
+import { Seo } from '@/components/common/Seo';
 
 const CATEGORY_LABELS = new Map<QuizCategory, string>(
   CATEGORY_META.map((meta) => [meta.category, meta.label]),
@@ -39,6 +40,12 @@ export function MyPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      <Seo
+        title="マイページ"
+        description="ラーメンクイズのマイページ。自分の戦績・スコア履歴を確認できます。"
+        url="/mypage"
+        noIndex
+      />
       <div className="card space-y-2">
         <h1 className="text-2xl font-black text-ramen-soy">マイページ</h1>
         <p className="text-sm text-ramen-soy/80">

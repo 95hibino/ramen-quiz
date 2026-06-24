@@ -1,0 +1,43 @@
+# ラーメンクイズ
+
+> ラーメンに関する 4 択クイズ Web アプリ。知識クイズ（基礎・地域・上級の 3 カテゴリ計 150 問）と、ユーザー投稿型の写真当てクイズを提供します。解説付きでラーメンの歴史・地域文化・製麺技術などを楽しく学べます。
+
+## サービス概要
+
+- 運営者: 大森商事（個人運営）
+- お問い合わせ: omorishoji2025@gmail.com
+- 個人情報を意図的に取得しないシンプルな設計（メールアドレス・実名・電話番号は取得しません）
+- ユーザー認証は localStorage 完結の簡易方式
+- 写真投稿は Supabase Storage に保存、EXIF（位置情報）は自動削除
+- 完全無料、広告（Google AdSense）で運営
+
+## 主要ページ
+
+- [ホーム](https://ramen-quiz-ten.vercel.app/): サービス概要と各クイズへの導線
+- [知識クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge): ラーメンの基礎知識・地域文化・上級知識を問う 4 択クイズ（カテゴリ選択画面）
+- [基礎クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/basic): ラーメンの基礎知識（スープ・麺・トッピングなど）50 問
+- [地域クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/regional): ご当地ラーメン・地域系統に関する 50 問
+- [上級クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/expert): 製麺技術・業界用語などマニアック向け 50 問
+- [写真当てクイズ](https://ramen-quiz-ten.vercel.app/quiz/photo): 写真からお店・系統・都道府県を当てる投稿型クイズ
+- [ランキング](https://ramen-quiz-ten.vercel.app/ranking): 累計スコアランキング（上位 100 名）
+- [このサイトについて](https://ramen-quiz-ten.vercel.app/about): サイトの趣旨とデータソース
+- [プライバシーポリシー](https://ramen-quiz-ten.vercel.app/privacy)
+- [利用規約](https://ramen-quiz-ten.vercel.app/terms)
+- [お問い合わせ](https://ramen-quiz-ten.vercel.app/contact)
+
+## コンテンツの特徴
+
+- 全 150 問の知識クイズ、各問題に解説文付き
+- 基礎・地域・上級の 3 カテゴリ、各 50 問
+- ラーメンの歴史・製麺技術・地域系統・業界用語などを網羅
+- 1 セッション 10 問・各 20 秒のスピードクイズ形式
+- 正解 1 問 10 点 + 残り時間ボーナス最大 5 点
+- 写真当てクイズは 5 軸（種類 / 都道府県 / 写真タイプ / 難易度 / 麺の太さ）で絞り込み可能
+
+## 技術スタック
+
+- フロントエンド: Vite + React 18 + TypeScript + Tailwind CSS
+- 状態管理: Zustand
+- ルーティング: React Router v6
+- ホスティング: Vercel
+- バックエンド: Supabase（写真投稿・お問い合わせ・ランキング）

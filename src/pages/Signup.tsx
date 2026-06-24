@@ -12,6 +12,7 @@ import {
   validateUsername,
 } from '@/lib/validation';
 import { useAuthStore } from '@/stores/authStore';
+import { Seo } from '@/components/common/Seo';
 
 interface FormErrors {
   username?: string;
@@ -76,6 +77,12 @@ export function Signup(): JSX.Element {
 
   return (
     <div className="card mx-auto max-w-md space-y-5">
+      <Seo
+        title="新規アカウント登録"
+        description="ラーメンクイズの新規アカウント登録ページ。メール・実名は不要、ユーザー名とパスワードだけで開始できます。"
+        url="/signup"
+        noIndex
+      />
       <div>
         <h1 className="text-2xl font-black text-ramen-soy">新規アカウント登録</h1>
         <p className="mt-2 text-xs text-ramen-soy/70">

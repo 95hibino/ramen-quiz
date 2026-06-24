@@ -86,8 +86,9 @@ export function PhotoQuiz(): JSX.Element {
     <div className="space-y-6">
       <Seo
         title="写真当てクイズ"
-        description="ラーメンの写真からお店や系統を当てる写真当てクイズ。種類・地域・写真タイプ・難易度・麺の太さで絞り込んで挑戦できます。"
+        description="ラーメン写真当てクイズ。お店の外観や麺・スープの写真から店舗・系統・都道府県を当てよう。種類・地域・写真タイプ・難易度・麺の太さの 5 軸で絞り込み可能。"
         url="/quiz/photo"
+        keywords={['ラーメン', '写真クイズ', '写真当てクイズ', 'ご当地ラーメン', 'ラーメン店舗当て']}
       />
 
       <AdBanner slot="photo-quiz-top" size="leaderboard" />

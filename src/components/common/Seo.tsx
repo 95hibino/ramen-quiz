@@ -7,12 +7,18 @@ import {
 } from '@/config/site';
 
 /**
- * Seo (OGP / Twitter Card) コンポーネント。
+ * Seo (OGP / Twitter Card / canonical / robots) コンポーネント。
  *
  * 各ページから呼ぶことで、共通の og:* / twitter:* メタタグを動的に差し替える。
  * react-helmet-async は React 18 + Strict Mode 対応のため採用 (react-helmet は警告が出る)。
  *
- * design §Phase 2 SNS シェア機能。
+ * 追加機能:
+ * - `canonical` (link rel="canonical") の出力
+ * - `robots` メタタグ (デフォルト index, follow) - インデックスさせたくないページは `noIndex` を渡す
+ * - `keywords` メタタグ (任意) - 効果は薄いが AI クローラーが参考にする場合あり
+ * - `ogType` で WebSite / Article などを切り替え可能
+ *
+ * design §Phase 2 SNS シェア機能 + SEO 強化第一弾 (2026/06)。
  */
 export interface SeoProps {
   /** ページ固有タイトル。`{title} | ラーメンクイズ` の形式で <title> に出力する。 */
@@ -27,6 +33,23 @@ export interface SeoProps {
   url?: string;
   /** OGP 画像の絶対 URL またはルート相対パス。省略時は `/og-default.svg`。 */
   ogImage?: string;
+  /**
+   * OGP のページ種別。デフォルト `website`。
+   * 個別の解説記事を持つようになれば `article` を指定する。
+   */
+  ogType?: 'website' | 'article';
+  /**
+   * 検索エンジンにインデックスさせたくない場合は true。
+   * デフォルト false (= index, follow を出力)。
+   * 例: 結果画面・マイページなどユーザー固有ページで使う。
+   */
+  noIndex?: boolean;
+  /**
+   * SEO 用キーワード (カンマ区切り or 配列)。
+   * 主要検索エンジンの順位には影響しないが、Bing / 一部 AI クローラーは参考にする。
+   * 設定しない場合は keywords メタタグ自体を出力しない。
+   */
+  keywords?: string | ReadonlyArray<string>;
 }
 
 export function Seo({
@@ -34,21 +57,28 @@ export function Seo({
   description = SITE_DEFAULT_DESCRIPTION,
   url,
   ogImage,
+  ogType = 'website',
+  noIndex = false,
+  keywords,
 }: SeoProps): JSX.Element {
   const pageTitle = `${title} | ${SITE_NAME}`;
 
   // SSR を行わない構成のため、url 省略時はブラウザのロケーションを参照する。
   const resolvedUrl = resolveCanonicalUrl(url);
   const resolvedImage = resolveAbsoluteUrl(ogImage ?? DEFAULT_OG_IMAGE_PATH);
+  const robotsContent = noIndex ? 'noindex, nofollow' : 'index, follow';
+  const keywordsContent = normalizeKeywords(keywords);
 
   return (
     <Helmet>
       <title>{pageTitle}</title>
       <meta name="description" content={description} />
+      <meta name="robots" content={robotsContent} />
+      {keywordsContent ? <meta name="keywords" content={keywordsContent} /> : null}
       {resolvedUrl ? <link rel="canonical" href={resolvedUrl} /> : null}
 
       {/* Open Graph */}
-      <meta property="og:type" content="website" />
+      <meta property="og:type" content={ogType} />
       <meta property="og:site_name" content={SITE_NAME} />
       <meta property="og:title" content={pageTitle} />
       <meta property="og:description" content={description} />
@@ -89,4 +119,22 @@ function resolveAbsoluteUrl(pathOrUrl: string): string {
   const built = buildSiteUrl(pathOrUrl);
   // ビルド時など origin が空のフォールバック: 相対パスのまま返す。
   return built.startsWith('http') ? built : pathOrUrl;
+}
+
+/**
+ * `keywords` prop を `meta[name="keywords"]` 用のカンマ区切り文字列に正規化する。
+ * - 文字列ならトリムしてそのまま返す (空文字なら未指定として扱う)。
+ * - 配列なら空要素を除いて `, ` で結合する。
+ */
+function normalizeKeywords(keywords: string | ReadonlyArray<string> | undefined): string | null {
+  if (!keywords) return null;
+  if (typeof keywords === 'string') {
+    const trimmed = keywords.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  const joined = keywords
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0)
+    .join(', ');
+  return joined.length > 0 ? joined : null;
 }

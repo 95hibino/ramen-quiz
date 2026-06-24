@@ -296,6 +296,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
         title="写真クイズを投稿する"
         description="あなたが撮ったラーメン写真でクイズを作って投稿しましょう。"
         url="/quiz/photo/submit"
+        noIndex
       />
 
       <div className="card">
