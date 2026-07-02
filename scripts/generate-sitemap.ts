@@ -13,8 +13,8 @@
  *
  * 含めるパス (公開しても良い静的ページのみ):
  *   - `/`, `/quiz/knowledge`, `/quiz/knowledge/basic`, `/quiz/knowledge/regional`,
- *     `/quiz/knowledge/expert`, `/quiz/photo`, `/ranking`, `/about`, `/privacy`,
- *     `/terms`, `/contact`
+ *     `/quiz/knowledge/expert`, `/quiz/photo`, `/ranking`, `/about`, `/faq`,
+ *     `/privacy`, `/terms`, `/contact`
  *
  * 除外するパス (ユーザー固有 or 状態依存で意味のあるコンテンツを持たない):
  *   - `/mypage`, `/result`, `/login`, `/signup`, `/quiz/photo/play`, `/quiz/photo/submit`
@@ -50,6 +50,7 @@ const ENTRIES: ReadonlyArray<SitemapEntry> = [
   { path: '/quiz/photo', priority: 0.8, changefreq: 'weekly' },
   { path: '/ranking', priority: 0.6, changefreq: 'daily' },
   { path: '/about', priority: 0.5, changefreq: 'monthly' },
+  { path: '/faq', priority: 0.7, changefreq: 'monthly' },
   { path: '/privacy', priority: 0.4, changefreq: 'yearly' },
   { path: '/terms', priority: 0.4, changefreq: 'yearly' },
   { path: '/contact', priority: 0.4, changefreq: 'yearly' },

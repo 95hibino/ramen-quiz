@@ -17,6 +17,7 @@ import { MyPage } from '@/pages/MyPage';
 import { Privacy } from '@/pages/Privacy';
 import { Terms } from '@/pages/Terms';
 import { Contact } from '@/pages/Contact';
+import { Faq } from '@/pages/Faq';
 
 function App(): JSX.Element {
   return (
@@ -39,6 +40,7 @@ function App(): JSX.Element {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/faq" element={<Faq />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

@@ -21,6 +21,7 @@
 - [写真当てクイズ](https://ramen-quiz-ten.vercel.app/quiz/photo): 写真からお店・系統・都道府県を当てる投稿型クイズ
 - [ランキング](https://ramen-quiz-ten.vercel.app/ranking): 累計スコアランキング（上位 100 名）
 - [このサイトについて](https://ramen-quiz-ten.vercel.app/about): サイトの趣旨とデータソース
+- [よくある質問 (FAQ)](https://ramen-quiz-ten.vercel.app/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A 20 件
 - [プライバシーポリシー](https://ramen-quiz-ten.vercel.app/privacy)
 - [利用規約](https://ramen-quiz-ten.vercel.app/terms)
 - [お問い合わせ](https://ramen-quiz-ten.vercel.app/contact)

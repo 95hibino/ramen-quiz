@@ -28,6 +28,10 @@ export function Footer(): JSX.Element {
             このサイトについて
           </Link>
           <span aria-hidden="true" className="text-ramen-soy/30">|</span>
+          <Link to="/faq" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
+            FAQ / よくある質問
+          </Link>
+          <span aria-hidden="true" className="text-ramen-soy/30">|</span>
           <Link to="/privacy" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
             プライバシーポリシー
           </Link>
