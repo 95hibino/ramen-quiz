@@ -14,15 +14,19 @@
  * 含めるパス (公開しても良い静的ページのみ):
  *   - `/`, `/quiz/knowledge`, `/quiz/knowledge/basic`, `/quiz/knowledge/regional`,
  *     `/quiz/knowledge/expert`, `/quiz/photo`, `/ranking`, `/about`, `/faq`,
- *     `/privacy`, `/terms`, `/contact`
+ *     `/privacy`, `/terms`, `/contact`, `/glossary`, `/regions`, `/regions/:prefectureSlug`
  *
  * 除外するパス (ユーザー固有 or 状態依存で意味のあるコンテンツを持たない):
  *   - `/mypage`, `/result`, `/login`, `/signup`, `/quiz/photo/play`, `/quiz/photo/submit`
  *
  * `<lastmod>` は本スクリプト実行時刻 (ビルド時刻と同等)、`<priority>` はトップ系を高めに設定。
+ *
+ * 都道府県別詳細ページ (`/regions/:prefectureSlug`) は `src/data/regionalRamen.ts` から
+ * slug を動的に読み込むことで、データ追加時にスクリプト側の修正なしでカバレッジが広がる。
  */
 import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { REGIONAL_RAMEN } from '../src/data/regionalRamen';
 
 /** sitemap に載せる単一 URL の定義。 */
 interface SitemapEntry {
@@ -40,8 +44,11 @@ interface SitemapEntry {
 /** 既定ドメイン: Vercel 本番 URL。`VITE_SITE_URL` で上書き可能。 */
 const DEFAULT_SITE_URL = 'https://ramen-quiz-ten.vercel.app';
 
-/** sitemap に含める公開ページ。順序は出力 XML の順序と一致する。 */
-const ENTRIES: ReadonlyArray<SitemapEntry> = [
+/**
+ * sitemap に含める公開ページの固定分。順序は出力 XML の順序と一致する。
+ * 動的に生成する `/regions/:prefectureSlug` は `buildEntries()` 内で末尾に連結する。
+ */
+const STATIC_ENTRIES: ReadonlyArray<SitemapEntry> = [
   { path: '/', priority: 1.0, changefreq: 'weekly' },
   { path: '/quiz/knowledge', priority: 0.9, changefreq: 'weekly' },
   { path: '/quiz/knowledge/basic', priority: 0.8, changefreq: 'monthly' },
@@ -51,10 +58,26 @@ const ENTRIES: ReadonlyArray<SitemapEntry> = [
   { path: '/ranking', priority: 0.6, changefreq: 'daily' },
   { path: '/about', priority: 0.5, changefreq: 'monthly' },
   { path: '/faq', priority: 0.7, changefreq: 'monthly' },
+  { path: '/glossary', priority: 0.7, changefreq: 'monthly' },
+  { path: '/regions', priority: 0.7, changefreq: 'monthly' },
   { path: '/privacy', priority: 0.4, changefreq: 'yearly' },
   { path: '/terms', priority: 0.4, changefreq: 'yearly' },
   { path: '/contact', priority: 0.4, changefreq: 'yearly' },
 ];
+
+/**
+ * 静的エントリ + `/regions/:prefectureSlug` の動的エントリを合成する。
+ * 動的分は `src/data/regionalRamen.ts` から slug を読み込むことで
+ * データ追加時に本スクリプトの修正が不要になる。
+ */
+function buildEntries(): ReadonlyArray<SitemapEntry> {
+  const regionDetailEntries: ReadonlyArray<SitemapEntry> = REGIONAL_RAMEN.map((r) => ({
+    path: `/regions/${r.prefectureSlug}`,
+    priority: 0.6,
+    changefreq: 'monthly',
+  }));
+  return [...STATIC_ENTRIES, ...regionDetailEntries];
+}
 
 /**
  * 末尾スラッシュを取り除いた origin を返す。
@@ -130,11 +153,12 @@ function main(): void {
     mkdirSync(outDir, { recursive: true });
   }
 
-  const xml = buildSitemapXml(baseUrl, ENTRIES);
+  const entries = buildEntries();
+  const xml = buildSitemapXml(baseUrl, entries);
   writeFileSync(outPath, xml, 'utf8');
 
   console.log(`[generate-sitemap] base=${baseUrl}`);
-  console.log(`[generate-sitemap] urls=${ENTRIES.length}`);
+  console.log(`[generate-sitemap] urls=${entries.length}`);
   console.log(`[generate-sitemap] output=${outPath}`);
 }
 

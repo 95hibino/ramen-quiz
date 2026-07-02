@@ -18,6 +18,9 @@ import { Privacy } from '@/pages/Privacy';
 import { Terms } from '@/pages/Terms';
 import { Contact } from '@/pages/Contact';
 import { Faq } from '@/pages/Faq';
+import { Glossary } from '@/pages/Glossary';
+import { Regions } from '@/pages/Regions';
+import { RegionDetail } from '@/pages/RegionDetail';
 
 function App(): JSX.Element {
   return (
@@ -41,6 +44,9 @@ function App(): JSX.Element {
           <Route path="/terms" element={<Terms />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<Faq />} />
+          <Route path="/glossary" element={<Glossary />} />
+          <Route path="/regions" element={<Regions />} />
+          <Route path="/regions/:prefectureSlug" element={<RegionDetail />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

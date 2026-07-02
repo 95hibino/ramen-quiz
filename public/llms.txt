@@ -22,6 +22,8 @@
 - [ランキング](https://ramen-quiz-ten.vercel.app/ranking): 累計スコアランキング（上位 100 名）
 - [このサイトについて](https://ramen-quiz-ten.vercel.app/about): サイトの趣旨とデータソース
 - [よくある質問 (FAQ)](https://ramen-quiz-ten.vercel.app/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A 20 件
+- [ラーメン用語辞典](https://ramen-quiz-ten.vercel.app/glossary): スープ・麺・タレ・トッピング・系統・文化用語をカテゴリ別に解説（40 語）
+- [都道府県別ご当地ラーメン](https://ramen-quiz-ten.vercel.app/regions): 全国 20 県以上のご当地ラーメンを地方別（北海道/東北/関東/中部/近畿/中国/四国/九州）に一覧化
 - [プライバシーポリシー](https://ramen-quiz-ten.vercel.app/privacy)
 - [利用規約](https://ramen-quiz-ten.vercel.app/terms)
 - [お問い合わせ](https://ramen-quiz-ten.vercel.app/contact)
@@ -34,6 +36,7 @@
 - 1 セッション 10 問・各 20 秒のスピードクイズ形式
 - 正解 1 問 10 点 + 残り時間ボーナス最大 5 点
 - 写真当てクイズは 5 軸（種類 / 都道府県 / 写真タイプ / 難易度 / 麺の太さ）で絞り込み可能
+- 用語辞典と都道府県別ご当地ラーメンページを併設し、クイズ学習の副読ページとして活用可能
 
 ## 技術スタック
 
