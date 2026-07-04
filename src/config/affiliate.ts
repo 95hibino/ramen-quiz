@@ -54,13 +54,25 @@ export interface AffiliateItem {
  * Vite は `import.meta.env` の参照を**ビルド時静的置換**するため、
  * 動的キー参照は不可。プロパティを直接参照する。
  */
+/**
+ * 楽天アフィリエイト: 博多一風堂ラーメンセット（2年連続 楽天グルメ大賞）。
+ * URL は公開 URL（アフィリエイト ID を含む）なので、そのままリポに置いて問題ない。
+ * 画像 URL は Rakuten のインプレッショントラッキングも兼ねる (`hbb.afl.rakuten.co.jp`)。
+ * env var が設定されていればそちらを優先し、未設定時はハードコード値をフォールバックとして使う。
+ */
+const RAKUTEN_IPPUDO_URL =
+  'https://hb.afl.rakuten.co.jp/ichiba/55782e19.5af60877.55782e1a.656821b1/?pc=https%3A%2F%2Fitem.rakuten.co.jp%2Fippudo-os%2F6408%2F&link_type=picttext&ut=eyJwYWdlIjoiaXRlbSIsInR5cGUiOiJwaWN0dGV4dCIsInNpemUiOiIzMDB4MzAwIiwibmFtIjoxLCJuYW1wIjoicmlnaHQiLCJjb20iOjEsImNvbXAiOiJkb3duIiwicHJpY2UiOjEsImJvciI6MSwiY29sIjoxLCJiYnRuIjoxLCJwcm9kIjowLCJhbXAiOmZhbHNlfQ%3D%3D';
+const RAKUTEN_IPPUDO_IMAGE =
+  'https://hbb.afl.rakuten.co.jp/hgb/55782e19.5af60877.55782e1a.656821b1/?me_id=1405989&item_id=10000043&pc=https%3A%2F%2Fthumbnail.image.rakuten.co.jp%2F%400_mall%2Fippudo-os%2Fcabinet%2Fshouhintouroku%2Fnekopos%2Fsamune800.jpg%3F_ex%3D300x300&s=300x300&t=picttext';
+
 export const AFFILIATE_ITEMS: Record<AffiliateSlot, AffiliateItem[]> = {
   'result-bottom': [
     {
       provider: 'rakuten',
-      text: 'お取り寄せラーメン人気ランキング',
-      url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING ?? '',
-      subText: '楽天市場で全国のご当地ラーメンをお取り寄せ',
+      text: '博多一風堂 選べるラーメンセット【2年連続 楽天グルメ大賞】',
+      url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING || RAKUTEN_IPPUDO_URL,
+      imageUrl: RAKUTEN_IPPUDO_IMAGE,
+      subText: '1,000円（税込・送料無料）／ とんこつ 2〜8 食のお試しセット',
     },
     {
       provider: 'amazon',
@@ -87,9 +99,10 @@ export const AFFILIATE_ITEMS: Record<AffiliateSlot, AffiliateItem[]> = {
   'home-bottom': [
     {
       provider: 'rakuten',
-      text: '人気のお取り寄せラーメン',
-      url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING ?? '',
-      subText: '楽天市場で全国の名店ラーメンをお取り寄せ',
+      text: '博多一風堂 選べるラーメンセット【2年連続 楽天グルメ大賞】',
+      url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING || RAKUTEN_IPPUDO_URL,
+      imageUrl: RAKUTEN_IPPUDO_IMAGE,
+      subText: '1,000円（税込・送料無料）／ 楽天市場で全国の名店ラーメン',
     },
   ],
 };

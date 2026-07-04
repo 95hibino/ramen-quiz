@@ -119,11 +119,16 @@ function AffiliateCard({ item }: AffiliateCardProps): JSX.Element {
       </div>
 
       {item.imageUrl ? (
-        <div className="overflow-hidden rounded-lg bg-ramen-broth/10">
+        // 画像は 300x300 想定。カード幅いっぱいに引き伸ばさないよう max-w で制約して中央寄せする。
+        // これにより Rakuten 等の正方形サムネがぼやけずに表示される。
+        // width/height 属性はレイアウトシフト (CLS) 対策で明示。
+        <div className="mx-auto w-full max-w-[240px] overflow-hidden rounded-lg bg-ramen-broth/10">
           <img
             src={item.imageUrl}
             alt=""
             loading="lazy"
+            width={300}
+            height={300}
             className="block h-auto w-full object-cover"
           />
         </div>
