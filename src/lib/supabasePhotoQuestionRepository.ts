@@ -292,4 +292,29 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
     }
     return result;
   },
+
+  async findBySubmitterId(submitterId: string): Promise<PhotoQuestion[]> {
+    const client = getSupabaseClient();
+    if (!client) return [];
+    const { data, error } = await client
+      .from(USER_PHOTO_QUESTIONS_TABLE)
+      .select('*')
+      .eq('submitter_id', submitterId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      // 取得失敗時は空配列扱いにしてアプリ落ちを防ぐ
+      console.warn(
+        '[supabasePhotoQuestionRepository] findBySubmitterId failed:',
+        error.message,
+      );
+      return [];
+    }
+    const rows = (data ?? []) as UserPhotoQuestionRow[];
+    const questions: PhotoQuestion[] = [];
+    for (const row of rows) {
+      const q = rowToPhotoQuestion(row);
+      if (q) questions.push(q);
+    }
+    return questions;
+  },
 };

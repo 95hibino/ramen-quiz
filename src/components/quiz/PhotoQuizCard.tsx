@@ -4,6 +4,7 @@ import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
 import { ReportModal } from './ReportModal';
+import { FavoriteButton } from './FavoriteButton';
 import { isReportRepositoryReady } from '@/lib/supabaseReportRepository';
 
 interface PhotoQuizCardProps {
@@ -102,6 +103,12 @@ export function PhotoQuizCard({
 
           {/* 店舗情報の直下に提携広告（予約サイト等）。環境変数未設定なら非表示。 */}
           <AffiliateBanner slot="photo-shop-info" />
+        </div>
+      ) : null}
+
+      {isAnswered ? (
+        <div className="flex justify-end">
+          <FavoriteButton quizType="photo" questionId={question.id} />
         </div>
       ) : null}
 

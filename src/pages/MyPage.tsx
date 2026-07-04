@@ -1,16 +1,31 @@
-import { useEffect, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useScoreStore } from '@/stores/scoreStore';
 import { CATEGORY_META } from '@/config/quizConfig';
 import type { QuizCategory } from '@/types/quiz';
 import { Seo } from '@/components/common/Seo';
+import { FavoritesSection } from '@/components/mypage/FavoritesSection';
+import { SubmissionsSection } from '@/components/mypage/SubmissionsSection';
+import { DangerZone } from '@/components/mypage/DangerZone';
+
+/**
+ * recharts (~100KB) を初期バンドルに含めないよう、グラフだけ React.lazy で分離。
+ * MyPage が表示された瞬間にネットワーク越しに取得され、Suspense fallback を表示する。
+ */
+const ScoreTrendChart = lazy(() =>
+  import('@/components/mypage/ScoreTrendChart').then((m) => ({
+    default: m.ScoreTrendChart,
+  })),
+);
 
 const CATEGORY_LABELS = new Map<QuizCategory, string>(
   CATEGORY_META.map((meta) => [meta.category, meta.label]),
 );
 
-/** マイページ: 自分の戦績を表示する (任意機能)。 */
+/**
+ * マイページ: ユーザー情報 / スコア推移 / お気に入り / 投稿履歴 / 危険な操作 を集約。
+ */
 export function MyPage(): JSX.Element {
   const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -42,10 +57,12 @@ export function MyPage(): JSX.Element {
     <div className="space-y-6">
       <Seo
         title="マイページ"
-        description="ラーメンクイズのマイページ。自分の戦績・スコア履歴を確認できます。"
+        description="ラーメンクイズのマイページ。自分の戦績・スコア推移・お気に入り・投稿履歴を確認できます。"
         url="/mypage"
         noIndex
       />
+
+      {/* ユーザー情報カード */}
       <div className="card space-y-2">
         <h1 className="text-2xl font-black text-ramen-soy">マイページ</h1>
         <p className="text-sm text-ramen-soy/80">
@@ -54,21 +71,41 @@ export function MyPage(): JSX.Element {
         <dl className="grid grid-cols-2 gap-2 pt-2 text-sm text-ramen-soy/80 sm:grid-cols-4">
           <Stat label="都道府県" value={currentUser.prefecture} />
           <Stat label="好きな店" value={currentUser.favoriteShop} />
+          <Stat label="プレイ回数" value={`${summary.count} 回`} />
           <Stat label="合計スコア" value={`${summary.total} pt`} />
-          <Stat label="ベストスコア" value={`${summary.best} pt`} />
         </dl>
       </div>
 
-      <div className="card">
-        <h2 className="text-lg font-bold text-ramen-soy">プレイ履歴 ({summary.count} 回)</h2>
+      {/* スコア推移グラフ */}
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold text-ramen-soy">スコア推移</h2>
+          <span className="text-xs text-ramen-soy/60">最近 30 プレイ</span>
+        </div>
         {myScoresStatus === 'loading' ? (
-          <p className="mt-3 text-sm text-ramen-soy/70">読み込み中...</p>
+          <p className="text-sm text-ramen-soy/70">読み込み中...</p>
         ) : null}
         {myScoresStatus === 'error' ? (
-          <p className="mt-3 text-sm font-bold text-ramen-chili">
+          <p className="text-sm font-bold text-ramen-chili">
             エラー: {myScoresError ?? '不明なエラー'}
           </p>
         ) : null}
+        {myScoresStatus === 'success' ? (
+          <Suspense fallback={<p className="text-sm text-ramen-soy/70">グラフを読み込み中...</p>}>
+            <ScoreTrendChart scores={myScores} limit={30} />
+          </Suspense>
+        ) : null}
+      </div>
+
+      {/* お気に入り問題 */}
+      <FavoritesSection />
+
+      {/* 投稿履歴 (Supabase 接続時のみ内容表示) */}
+      <SubmissionsSection submitterId={currentUser.username} />
+
+      {/* プレイ履歴 (既存表示を残す) */}
+      <div className="card">
+        <h2 className="text-lg font-bold text-ramen-soy">プレイ履歴 ({summary.count} 回)</h2>
         {myScoresStatus === 'success' && myScores.length === 0 ? (
           <p className="mt-3 text-sm text-ramen-soy/70">
             まだプレイ履歴がありません。{' '}
@@ -99,6 +136,9 @@ export function MyPage(): JSX.Element {
           </ul>
         ) : null}
       </div>
+
+      {/* 危険な操作 */}
+      <DangerZone />
     </div>
   );
 }

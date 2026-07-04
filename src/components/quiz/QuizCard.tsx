@@ -1,6 +1,7 @@
 import type { QuizQuestion } from '@/types/quiz';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
+import { FavoriteButton } from './FavoriteButton';
 
 interface QuizCardProps {
   question: QuizQuestion;
@@ -40,6 +41,11 @@ export function QuizCard({ question, selectedIdx, isAnswered, onSelect }: QuizCa
         <div className="rounded-xl border border-ramen-broth/40 bg-ramen-broth/10 p-4 text-sm leading-relaxed text-ramen-soy">
           <p className="mb-1 font-bold text-ramen-chili">解説</p>
           <p>{question.explanation}</p>
+        </div>
+      ) : null}
+      {isAnswered ? (
+        <div className="flex justify-end">
+          <FavoriteButton quizType="knowledge" questionId={question.id} />
         </div>
       ) : null}
     </div>

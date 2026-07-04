@@ -32,6 +32,12 @@ export interface PhotoQuestionRepository {
    * 投稿可能か否かは呼び出し側で `'submit' in repo` で判定する。
    */
   submit?(data: PhotoQuestionSubmission, image: Blob): Promise<PhotoQuestion>;
+  /**
+   * 特定の `submitterId` が投稿した問題の一覧を新しい順で返す (任意)。
+   * マイページの「投稿履歴」表示に利用する。
+   * 未実装のリポジトリは undefined を返す想定。
+   */
+  findBySubmitterId?(submitterId: string): Promise<PhotoQuestion[]>;
 }
 
 /** リポジトリが `submit` をサポートするかの型ガード。 */
