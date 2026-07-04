@@ -6,8 +6,9 @@
  *   - ShareButtons コンポーネントの責務を「表示」だけに保つ
  *   - 各 SNS のクエリパラメータ仕様変更に追従しやすくする
  *
- * design §Phase 2 SNS シェア機能。
+ * design §Phase 2 SNS シェア機能 / §Phase 3 動的 OG 画像。
  */
+import { buildSiteUrl } from '@/config/site';
 
 /** シェア入力の共通形。 */
 export interface ShareInput {
@@ -102,4 +103,59 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   } finally {
     document.body.removeChild(textarea);
   }
+}
+
+/* --------------------------------------------------------------------------
+ * 動的 OG 画像 URL (Phase 3)
+ *
+ * `/api/og?score=...&max=...&category=...&username=...&type=...`
+ * のようなクエリで Vercel Edge Function を呼び出し、
+ * SNS シェアカード用の 1200x630 PNG を返させる。
+ *
+ * URL 生成ロジックだけをここに置き、実装は `api/og.tsx` に集約している。
+ * ------------------------------------------------------------------------ */
+
+/** buildOgImageUrl に渡す入力。 */
+export interface OgImageParams {
+  /** 獲得スコア (0..999 の範囲でクランプされる)。 */
+  score: number;
+  /** 最大スコア (1..999 の範囲でクランプされる)。 */
+  max: number;
+  /** カテゴリラベル (例: '初級' / '中級' / '写真当てクイズ')。 */
+  category: string;
+  /** ユーザー名 (任意)。省略時は画像に表示しない。 */
+  username?: string;
+  /** クイズ種別。'photo' のときはフッターを「写真当てクイズ」にする。 */
+  quizType?: 'knowledge' | 'photo';
+}
+
+/**
+ * 動的 OG 画像の絶対 URL を組み立てる。
+ *
+ * - `SITE_URL` 環境変数 (VITE_SITE_URL) が設定されていればその origin、
+ *   未設定時はブラウザの `window.location.origin` を使う (config/site.ts の挙動)。
+ * - SSR/CLI ビルド時に origin が空になる場合は `/api/og?...` の相対 URL を返す。
+ *   OG 画像は Facebook / X などのクローラーが取得するため、絶対 URL が必要。
+ *   SITE_URL を必ず設定するのが本番運用の前提。
+ *
+ * @example
+ *   buildOgImageUrl({ score: 87, max: 100, category: '中級', username: '大森商事' })
+ *   // → 'https://ramen-quiz-ten.vercel.app/api/og?score=87&max=100&category=%E4%B8%AD%E7%B4%9A&username=%E5%A4%A7%E6%A3%AE%E5%95%86%E4%BA%8B&type=knowledge'
+ */
+export function buildOgImageUrl(params: OgImageParams): string {
+  const search = new URLSearchParams();
+  // Number.isFinite でない値 (NaN) は 0 として送る。API 側でもクランプするので二重の保険。
+  search.set('score', String(Number.isFinite(params.score) ? params.score : 0));
+  search.set('max', String(Number.isFinite(params.max) ? params.max : 100));
+  search.set('category', params.category);
+  const trimmedUsername = params.username?.trim();
+  if (trimmedUsername) {
+    search.set('username', trimmedUsername);
+  }
+  // quizType は現状 API 側でフッター表示に使うのみ。省略時は knowledge 扱い。
+  search.set('type', params.quizType ?? 'knowledge');
+
+  // buildSiteUrl は末尾スラッシュを取り除いた origin + パスを返す。
+  // origin が空 (SSR/CLI ビルド時) の場合は `/api/og?...` の相対 URL となる。
+  return `${buildSiteUrl('/api/og')}?${search.toString()}`;
 }

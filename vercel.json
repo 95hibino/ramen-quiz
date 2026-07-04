@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/((?!ads\\.txt|robots\\.txt|sitemap\\.xml|llms\\.txt|og-default\\.svg|assets/|photo_quiz/).*)", "destination": "/index.html" }
+    { "source": "/((?!ads\\.txt|robots\\.txt|sitemap\\.xml|llms\\.txt|og-default\\.svg|assets/|photo_quiz/|api/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

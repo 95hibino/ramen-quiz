@@ -1,0 +1,19 @@
+{
+  "// _README": "Vercel の api/ ディレクトリ用 tsconfig。Vite ビルド (tsconfig.app.json は include: ['src']) からは分離しており、ここでの設定は Vercel 側のトランスパイル時にのみ参照される。JSX/型情報を持たせるのは主にエディタの補完・型チェック目的。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}

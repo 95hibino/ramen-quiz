@@ -8,6 +8,9 @@ import { ResultScreen } from '@/components/quiz/ResultScreen';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
+import { CATEGORY_META } from '@/config/quizConfig';
+import { maxPossibleScore } from '@/lib/score';
+import { buildOgImageUrl } from '@/lib/shareUrls';
 
 /**
  * 結果画面 (知識クイズ / 写真当てクイズ 共通)。
@@ -107,6 +110,24 @@ export function Result(): JSX.Element {
   const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
   const seoDescription = `ラーメンクイズで ${totalScore}点 を獲得！あなたもラーメン知識を試してみよう。`;
 
+  // 動的 OG 画像 (SNS シェア用) の URL を組み立てる。
+  // - 結果画面自体は noIndex だが、og:image は SNS クローラー (X / Facebook / LINE) が
+  //   シェアカード生成のために取得する。
+  // - カテゴリラベルは知識クイズなら CATEGORY_META から、写真クイズなら固定文言。
+  const ogCategoryLabel =
+    activeQuizType === 'photo'
+      ? '写真当てクイズ'
+      : (knowledgeCategory
+          ? CATEGORY_META.find((m) => m.category === knowledgeCategory)?.label
+          : undefined) ?? 'ラーメンクイズ';
+  const ogImage = buildOgImageUrl({
+    score: totalScore,
+    max: maxPossibleScore(questions.length),
+    category: ogCategoryLabel,
+    username: currentUser?.username ?? undefined,
+    quizType: activeQuizType,
+  });
+
   // BreadcrumbList: ホーム → クイズ一覧 → 結果。
   // 結果画面はユーザーの個別状態に依存するため検索エンジンには noIndex を伝える。
   const quizListUrl =
@@ -141,7 +162,13 @@ export function Result(): JSX.Element {
 
   return (
     <>
-      <Seo title="クイズ結果" description={seoDescription} url="/result" noIndex />
+      <Seo
+        title="クイズ結果"
+        description={seoDescription}
+        url="/result"
+        ogImage={ogImage}
+        noIndex
+      />
       <StructuredData schema={breadcrumbSchema} />
       <ResultScreen
         quizType={activeQuizType}
