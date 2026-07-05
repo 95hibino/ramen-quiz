@@ -18,6 +18,15 @@ export const SUPABASE_STORAGE_BUCKET: string =
 /** ユーザー投稿問題テーブル名 (Phase 2 で固定)。 */
 export const USER_PHOTO_QUESTIONS_TABLE = 'user_photo_questions';
 
+/** 公開プロフィールテーブル名 (ランキング表示用の最小情報)。 */
+export const PUBLIC_PROFILES_TABLE = 'public_profiles';
+
+/** クイズスコアテーブル名 (1 プレイ = 1 行)。 */
+export const QUIZ_SCORES_TABLE = 'quiz_scores';
+
+/** ランキング集計ビュー名 (public_profiles LEFT JOIN quiz_scores の GROUP BY)。 */
+export const QUIZ_RANKING_VIEW = 'quiz_ranking';
+
 let cachedClient: SupabaseClient | null | undefined;
 
 /**

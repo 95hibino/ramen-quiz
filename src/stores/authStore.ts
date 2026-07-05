@@ -4,6 +4,7 @@ import type { AuthRepository } from '@/lib/authRepository';
 import { localAuthRepository } from '@/lib/localAuthRepository';
 import type { LoginInput, SignupInput, User } from '@/types/account';
 import { STORAGE_KEYS } from '@/lib/storage';
+import { upsertPublicProfile } from '@/lib/supabasePublicProfileRepository';
 
 export type AuthStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -38,6 +39,9 @@ export function createAuthStore(repository: AuthRepository = localAuthRepository
           set({ status: 'loading', errorMessage: null });
           try {
             const user = await repository.signup(input);
+            // ランキング共有のため公開プロフィールを Supabase に upsert する。
+            // Supabase 未接続時は no-op、失敗しても signup は成功扱い。
+            void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
           } catch (err) {
@@ -51,6 +55,9 @@ export function createAuthStore(repository: AuthRepository = localAuthRepository
           set({ status: 'loading', errorMessage: null });
           try {
             const user = await repository.login(input);
+            // 別端末での初回ログイン等でプロフィールが Supabase に無いケースに備え、
+            // ログイン成功時にも upsert する (冪等)。
+            void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
           } catch (err) {

@@ -593,3 +593,166 @@ CREATE POLICY "anon_reports_insert" ON content_reports
 | `report.body` | 任意 / 最大 500 字 | NULL 可 / `char_length(body) <= 500` |
 
 フロントは UX のため、DB は最終防御として配置しています。文言・上限を変えるときは両側を必ず揃えてください。
+
+---
+
+## §10 世界ランキング (public_profiles + quiz_scores)
+
+ランキング機能を「各ブラウザ内 localStorage」から「Supabase 経由の全プレイヤー共有」に切り替えるためのテーブル一式です。既存の localStorage 認証はそのまま維持します (Phase 3 の Auth 移行は別途)。
+
+### 目的
+
+- ログイン中ユーザー同士がランキング画面で相互にスコアを見られるようにする
+- 別端末での再ログイン時にもプロフィールを維持する
+- Supabase 未接続時は自動で localStorage 集計にフォールバック (既存挙動保護)
+
+### 実行 SQL (初回のみ、Supabase SQL Editor で 1 度だけ)
+
+```sql
+-- ==========================================
+-- 公開プロフィール (public_profiles)
+-- ==========================================
+-- ランキング表示のために各ユーザーの最小情報を保存する。
+-- Phase 2: localStorage 認証のまま、Supabase 側は「公開情報の共有先」として使う。
+-- Phase 3+ で Supabase Auth に移行する場合、id を auth.uid() に載せ替える設計。
+CREATE TABLE public_profiles (
+  id            TEXT PRIMARY KEY,       -- クライアント生成の UUID (localStorage の User.id)
+  username      TEXT NOT NULL CHECK (char_length(username) BETWEEN 1 AND 40),
+  prefecture    TEXT NOT NULL CHECK (char_length(prefecture) BETWEEN 2 AND 8),
+  favorite_shop TEXT NOT NULL CHECK (char_length(favorite_shop) BETWEEN 1 AND 100),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ユーザー名検索の高速化 (将来重複検知にも使える)
+CREATE INDEX idx_public_profiles_username_lower
+  ON public_profiles ((lower(username)));
+
+-- RLS: 誰でも SELECT (ランキング表示用)、INSERT/UPDATE は anon に許可
+-- 注: Phase 2 は Supabase Auth を使わないため、匿名クライアントが自由に upsert 可。
+-- 詐称対策は Phase 3 の Auth 移行で強化する。当面はレート制限で抑える。
+ALTER TABLE public_profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_profiles_select" ON public_profiles
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_profiles_insert" ON public_profiles
+  FOR INSERT TO anon WITH CHECK (id IS NOT NULL AND username IS NOT NULL);
+CREATE POLICY "anon_profiles_update" ON public_profiles
+  FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
+-- ==========================================
+-- クイズスコア (quiz_scores)
+-- ==========================================
+-- 1 プレイ = 1 行。ランキングは quiz_ranking ビュー経由で集計する。
+CREATE TABLE quiz_scores (
+  id            TEXT PRIMARY KEY,       -- クライアント生成
+  user_id       TEXT NOT NULL REFERENCES public_profiles(id) ON DELETE CASCADE,
+  quiz_type     TEXT NOT NULL CHECK (quiz_type IN ('knowledge','photo')),
+  category      TEXT CHECK (category IS NULL OR category IN ('basic','regional','expert')),
+  score         INTEGER NOT NULL CHECK (score >= 0 AND score <= 100000),
+  correct_count INTEGER NOT NULL CHECK (correct_count >= 0),
+  total_count   INTEGER NOT NULL CHECK (total_count > 0 AND total_count <= 100),
+  played_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT correct_le_total CHECK (correct_count <= total_count)
+);
+
+CREATE INDEX idx_quiz_scores_user_played
+  ON quiz_scores (user_id, played_at DESC);
+CREATE INDEX idx_quiz_scores_score_desc
+  ON quiz_scores (score DESC);
+
+ALTER TABLE quiz_scores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_scores_select" ON quiz_scores
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon_scores_insert" ON quiz_scores
+  FOR INSERT TO anon WITH CHECK (user_id IS NOT NULL AND score IS NOT NULL);
+
+-- ==========================================
+-- レート制限トリガー (連投抑制)
+-- ==========================================
+-- 同一 user_id から 3 秒以内の連投を弾く。1 プレイ 20 秒 × 10 問 = 約 3 分かかるため
+-- 正規プレイでは絶対に引っかからない値だが、ボット・スクリプト対策として設ける。
+-- `_shacho` (管理者) はスキップ。
+CREATE OR REPLACE FUNCTION enforce_quiz_score_rate_limit()
+RETURNS TRIGGER AS $$
+DECLARE
+  last_played TIMESTAMPTZ;
+  seconds_since NUMERIC;
+BEGIN
+  IF NEW.user_id = '_shacho' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT MAX(played_at) INTO last_played
+  FROM quiz_scores
+  WHERE user_id = NEW.user_id;
+
+  IF last_played IS NOT NULL THEN
+    seconds_since := EXTRACT(EPOCH FROM (NOW() - last_played));
+    IF seconds_since < 3 THEN
+      RAISE EXCEPTION 'rate_limit_exceeded:%', CEIL(3 - seconds_since);
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER quiz_scores_rate_limit
+  BEFORE INSERT ON quiz_scores
+  FOR EACH ROW EXECUTE FUNCTION enforce_quiz_score_rate_limit();
+
+-- ==========================================
+-- ランキング集計ビュー (quiz_ranking)
+-- ==========================================
+-- プロフィール全件を LEFT JOIN しているので、スコア未記録の新規ユーザーも
+-- 0 pt / 0 プレイで並ぶ。フロント側で totalScore=0 を弾く/弾かないは表示調整。
+CREATE OR REPLACE VIEW quiz_ranking AS
+SELECT
+  p.id            AS user_id,
+  p.username,
+  p.prefecture,
+  p.favorite_shop,
+  p.created_at,
+  COALESCE(SUM(s.score), 0)::INTEGER AS total_score,
+  COUNT(s.id)::INTEGER              AS play_count
+FROM public_profiles p
+LEFT JOIN quiz_scores s ON s.user_id = p.id
+GROUP BY p.id, p.username, p.prefecture, p.favorite_shop, p.created_at
+ORDER BY total_score DESC, play_count ASC;
+```
+
+### 確認方法
+
+1. Vercel Environment Variables に `VITE_SUPABASE_URL` と `VITE_SUPABASE_ANON_KEY` が既に設定済みであること (Phase 2 で設定済のはず)
+2. 上記 SQL を Supabase Dashboard → SQL Editor で 1 度だけ実行
+3. サイトを開いて、既存アカウントで再ログイン → Table Editor → `public_profiles` に 1 行入っていること
+4. クイズを 1 回プレイして結果画面に到達 → `quiz_scores` に 1 行入っていること
+5. `/ranking` を開いて、自分の順位が表示されること
+6. 別ブラウザ (シークレットウィンドウ等) で別ユーザーを作成 → プレイ → 双方の `/ranking` に両ユーザーが表示されること
+
+### 既存 localStorage スコアの扱い
+
+移行前に貯めた localStorage のスコアは **サーバに転送されません** (新規に累積開始)。以下の理由で意図的な設計です:
+
+- 移行前スコアには他ユーザーとの整合性を保証できない (時刻ずれ・改竄不明)
+- 移行タイミングでリーダーボードをリセットする方が公平
+
+必要になれば `scripts/admin/` に localStorage → Supabase の一括インポート CLI を追加する余地はあります。
+
+### 詐称対策 (Phase 2 の限界と将来設計)
+
+現在の RLS は `anon` が自由に INSERT できるため、以下の攻撃は理論上可能です:
+
+- 存在するプロフィール ID (公開されている user_id) を借りて偽スコアを投入
+- 3 秒 のレート制限に従いつつ、bot でスコアを積み上げる
+
+対策の優先度と方法:
+
+| 優先度 | 対策 | 実装工数 |
+|---|---|---|
+| 中 | `_shacho` から怪しい行を目視削除 (`scripts/admin/`) | 30 分 |
+| 高 | Supabase Auth (匿名サインイン) に移行し、`auth.uid() = user_id` を RLS で強制 | 4〜6 時間 |
+| 参考 | Cloudflare Turnstile / hCaptcha でクライアント検証 | 2〜3 時間 |
+
+Phase 2 での運用中に不正が観測されたら、上表の高優先度案に移行してください。

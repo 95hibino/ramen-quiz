@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ScoreRepository } from '@/lib/scoreRepository';
-import { localScoreRepository } from '@/lib/localScoreRepository';
+import { compositeScoreRepository } from '@/lib/compositeScoreRepository';
 import type { RankingEntry, ScoreRecord } from '@/types/account';
 import type { QuizCategory } from '@/types/quiz';
 
@@ -35,7 +35,7 @@ interface ScoreState {
 
 const DEFAULT_RANKING_LIMIT = 100;
 
-export function createScoreStore(repository: ScoreRepository = localScoreRepository) {
+export function createScoreStore(repository: ScoreRepository = compositeScoreRepository) {
   return create<ScoreState>((set) => ({
     ranking: [],
     rankingStatus: 'idle',

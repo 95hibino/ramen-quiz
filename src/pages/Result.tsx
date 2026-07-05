@@ -68,22 +68,31 @@ export function Result(): JSX.Element {
 
     const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
     const correctCount = answers.filter((a) => a.isCorrect).length;
-    if (activeQuizType === 'photo') {
-      void recordScore({
-        userId: currentUser.id,
-        quizType: 'photo',
-        score: totalScore,
-        correctCount,
-        totalCount: questions.length,
-      });
-    } else if (knowledgeCategory) {
-      void recordScore({
-        userId: currentUser.id,
-        category: knowledgeCategory,
-        quizType: 'knowledge',
-        score: totalScore,
-        correctCount,
-        totalCount: questions.length,
+    // Supabase 未接続時はローカルにのみ保存 (throw なし)。
+    // Supabase 接続中は世界ランキング反映が失敗しても、ローカルには保存済みなので
+    // マイページ表示は担保される。ここでは warn だけで UX を止めない。
+    const scoreInput =
+      activeQuizType === 'photo'
+        ? {
+            userId: currentUser.id,
+            quizType: 'photo',
+            score: totalScore,
+            correctCount,
+            totalCount: questions.length,
+          }
+        : knowledgeCategory
+          ? {
+              userId: currentUser.id,
+              category: knowledgeCategory,
+              quizType: 'knowledge',
+              score: totalScore,
+              correctCount,
+              totalCount: questions.length,
+            }
+          : null;
+    if (scoreInput) {
+      recordScore(scoreInput).catch((err) => {
+        console.warn('[Result] 世界ランキングへのスコア反映に失敗:', err);
       });
     }
   }, [activeQuizType, questions, answers, currentUser, knowledgeCategory, recordScore]);
