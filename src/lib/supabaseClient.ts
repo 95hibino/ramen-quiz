@@ -44,9 +44,13 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
   cachedClient = createClient(url, anonKey, {
     auth: {
-      // Phase 2 では localStorage 簡易認証を使うので Supabase Auth セッションは持たない
-      persistSession: false,
-      autoRefreshToken: false,
+      // Phase 3: Supabase Auth (Email+Password ベース、内部的に fake email 変換)。
+      // セッションを localStorage に永続化し、リロード後も自動復元する。
+      // 環境変数未設定時は getSupabaseClient() 自体が null を返すので、
+      // ここには到達しない (二重防御)。
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'ramen-quiz:supabase-auth',
     },
   });
   return cachedClient;

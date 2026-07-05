@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { Footer } from '@/components/common/Footer';
 import { LoadingFallback } from '@/components/common/LoadingFallback';
+import { useAuthStore } from '@/stores/authStore';
 
 // Route-based code splitting
 // -------------------------------------------------------------
@@ -46,6 +47,14 @@ const RegionDetail = lazy(() =>
 );
 
 function App(): JSX.Element {
+  const syncFromSession = useAuthStore((s) => s.syncFromSession);
+
+  // 起動時に Supabase Auth のセッションと currentUser を同期する。
+  // 未接続時 (VITE_SUPABASE_URL なし) は syncFromSession が即 return する。
+  useEffect(() => {
+    void syncFromSession();
+  }, [syncFromSession]);
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />

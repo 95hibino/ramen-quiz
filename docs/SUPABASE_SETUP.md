@@ -756,3 +756,141 @@ ORDER BY total_score DESC, play_count ASC;
 | 参考 | Cloudflare Turnstile / hCaptcha でクライアント検証 | 2〜3 時間 |
 
 Phase 2 での運用中に不正が観測されたら、上表の高優先度案に移行してください。
+
+---
+
+## §11 Phase 3: Supabase Auth 移行 (スコア詐称完全対策)
+
+`§10` の匿名クライアントによる anon INSERT は詐称可能でしたが、本セクションで
+**Supabase Auth のセッションに紐付いた `auth.uid()` を強制**し、詐称を完全遮断します。
+
+### 何が変わるか
+
+| 項目 | Before (§10) | After (§11) |
+|---|---|---|
+| 認証 | localStorage 完結 (SHA-256) | Supabase Auth (Email+Password、内部は fake email 変換) |
+| ユーザー ID | クライアント生成 UUID | サーバ発行 `auth.uid()` |
+| `public_profiles` INSERT | 誰でも可 (id 自由) | `authenticated` のみ、`id = auth.uid()` 強制 |
+| `quiz_scores` INSERT | 誰でも可 (user_id 自由) | `authenticated` のみ、`user_id = auth.uid()` 強制 |
+| 詐称可否 | 可 | 不可 (署名済み JWT ベース) |
+| セッション永続化 | Zustand persist | Supabase Auth SDK (`ramen-quiz:supabase-auth`) |
+| ログイン UX | ユーザー名+パスワード | 変更なし (見た目は同じ) |
+
+### fake email 変換について
+
+Supabase Auth は Email 必須ですが、本サービスは個人情報を扱わない方針のため、
+ユーザー名から `sha256(username)` を計算して `<hex32>@ramen-quiz.internal` を生成し、
+Supabase Auth の Email として使います。IANA 予約 TLD `.internal` は公開ドメインで
+使えないため、実在ドメインとの衝突リスクなし。
+
+### 社長作業 1: Supabase ダッシュボード設定
+
+1. Supabase Dashboard → **Authentication** → **Providers** → **Email**
+2. **「Confirm email」を OFF** にする (fake email には送信できないため必須)
+3. 「Enable Sign ups」は ON のまま
+4. **Authentication** → **URL Configuration** → Site URL は本番ドメイン
+   (例: `https://ramen-quiz-ten.vercel.app`) を設定 (未設定でも Auth は動くが警告が出る)
+5. **Authentication** → **Rate Limits** はデフォルトのままで OK
+
+### 社長作業 2: SQL 実行 (RLS 強化)
+
+Supabase SQL Editor で以下を 1 度だけ実行:
+
+```sql
+-- ==========================================
+-- §10 の緩い anon ポリシーを削除
+-- ==========================================
+DROP POLICY IF EXISTS "anon_profiles_insert" ON public_profiles;
+DROP POLICY IF EXISTS "anon_profiles_update" ON public_profiles;
+DROP POLICY IF EXISTS "anon_scores_insert" ON quiz_scores;
+
+-- ==========================================
+-- §11 の厳格な authenticated 専用ポリシー
+-- ==========================================
+-- public_profiles: authenticated のみが INSERT/UPDATE 可能。
+-- id は必ず auth.uid() と一致すること (詐称防止の要)。
+CREATE POLICY "auth_profiles_insert" ON public_profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid()::text = id);
+
+CREATE POLICY "auth_profiles_update" ON public_profiles
+  FOR UPDATE TO authenticated
+  USING (auth.uid()::text = id)
+  WITH CHECK (auth.uid()::text = id);
+
+-- quiz_scores: authenticated のみが INSERT 可能。
+-- user_id は必ず auth.uid() と一致すること。
+CREATE POLICY "auth_scores_insert" ON quiz_scores
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid()::text = user_id);
+
+-- SELECT ポリシーは §10 のまま (誰でも閲覧可、ランキング表示のため)。
+-- DELETE / UPDATE を quiz_scores に対して定義しないため、
+-- ユーザーが過去のスコアを改ざん・削除することも不可能。
+
+-- ==========================================
+-- §10 で登録された「認証なしプロフィール/スコア」の掃除 (任意)
+-- ==========================================
+-- Phase 3 移行前に §10 の緩い RLS で登録されたレガシー行がある場合、
+-- auth.users に対応する行が無いはずなので削除する。
+-- 本番運用開始前の空 DB なら不要。既にデータがあるなら影響を確認してから実行:
+--
+-- 削除される行数を先に確認:
+--   SELECT COUNT(*) FROM quiz_scores WHERE user_id NOT IN (SELECT id::text FROM auth.users);
+--   SELECT COUNT(*) FROM public_profiles WHERE id NOT IN (SELECT id::text FROM auth.users);
+--
+-- 問題なければ削除:
+--   DELETE FROM quiz_scores WHERE user_id NOT IN (SELECT id::text FROM auth.users);
+--   DELETE FROM public_profiles WHERE id NOT IN (SELECT id::text FROM auth.users);
+```
+
+### 移行時のユーザー影響
+
+- **旧 localStorage で登録済みだったユーザー**: 次回サイト訪問時に自動でログアウトされ、
+  再サインアップが必要になります。フロント側 (`authStore.syncFromSession`) が
+  レガシーセッションを検出してクリアします。
+- **旧ランキングデータ**: `§10` 時代に貯まった `quiz_scores` と `public_profiles` は、
+  上の「任意クリーンアップ SQL」を実行すると消えます。実行しなければ残ります (ただし
+  誰もログインできない孤児行のまま)。
+- **お気に入り / 間違えた問題**: localStorage 完結なので影響なし。
+- **写真クイズ投稿 (user_photo_questions)**: `submitter_id` 参照は変更していない
+  ため、既存投稿はそのまま閲覧・回答可能。ただし新規投稿の `submitter_id` は
+  `auth.uid()` になります。
+
+### 確認方法
+
+1. `.env.local` / Vercel Environment Variables を再確認 (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY が正しいこと)
+2. サイトを開いて、旧ユーザーが自動ログアウトされていること
+3. **新規サインアップ**: ユーザー名 / パスワード / 都道府県 / 好きな店を入れて登録 → 成功
+4. Supabase Dashboard → **Authentication** → **Users** に `<hex>@ramen-quiz.internal` の
+   ユーザーが 1 行追加されていること
+5. Table Editor → `public_profiles` に対応する行が入っていること (id は auth.users.id と一致)
+6. クイズを 1 回プレイ → Table Editor → `quiz_scores` に user_id = auth.uid() の行が入ること
+7. **試行: 別ユーザーで登録 → ログイン → プレイ → ランキングに 2 人並ぶこと**
+8. **試行: 開発者コンソールで無関係な user_id を混ぜて INSERT を叩く → RLS ポリシー違反で拒否されること (詐称遮断確認)**
+
+### 詐称試行のテスト例 (ブラウザ Console)
+
+```javascript
+// 認証済みユーザーとして、自分ではない user_id でスコア INSERT を試みる
+// 期待: RLS ポリシーで REJECT される
+const client = /* Supabase client を取得 */;
+await client.from('quiz_scores').insert({
+  id: 'test-forge',
+  user_id: 'someone-elses-uuid',
+  quiz_type: 'knowledge',
+  category: 'basic',
+  score: 999999,
+  correct_count: 10,
+  total_count: 10,
+});
+// → error: new row violates row-level security policy for table "quiz_scores"
+```
+
+### まとめ: Phase 3 で何を防げるか
+
+- ✅ 他ユーザーの user_id で偽スコアを投入すること
+- ✅ 他ユーザーのプロフィールを勝手に書き換えること
+- ✅ 誰も見張っていない裏口 INSERT
+- ⚠️ 一方で「自分自身の user_id でボットが繰り返しプレイ」は防げない
+  (これは §10 のレート制限トリガーがカバー、必要なら Turnstile 等を追加)

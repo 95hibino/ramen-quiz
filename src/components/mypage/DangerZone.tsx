@@ -26,8 +26,12 @@ export function DangerZone(): JSX.Element {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
 
-  const handleLogout = (): void => {
-    logout();
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await logout();
+    } catch (err) {
+      console.warn('[DangerZone] logout failed:', err);
+    }
     navigate('/', { replace: true });
   };
 
@@ -38,11 +42,11 @@ export function DangerZone(): JSX.Element {
     }
   };
 
-  const handleDeleteAccount = (): void => {
+  const handleDeleteAccount = async (): Promise<void> => {
     if (!currentUser) return;
     if (confirmInput !== currentUser.username) return;
 
-    // 1) ユーザー本体
+    // 1) ユーザー本体 (localStorage 旧データ)
     const users = readJson<User[]>(STORAGE_KEYS.users, []);
     writeJson<User[]>(
       STORAGE_KEYS.users,
@@ -69,8 +73,15 @@ export function DangerZone(): JSX.Element {
     // 5) scoreStore のインメモリキャッシュもクリアしておく (次回ログイン時に別ユーザー分が漏れないように)
     useScoreStore.setState({ myScores: [], myScoresStatus: 'idle', myScoresError: null });
 
-    // 6) ログアウト → ホームへ
-    logout();
+    // 6) ログアウト (Supabase Auth セッションクリア含む) → ホームへ
+    // 注: Phase 3 では Supabase 側の auth.users 本体削除は Service Role Key が必要なため
+    // フロントから直接は行わない。代わりに Supabase セッションをクリアし、
+    // public_profiles / quiz_scores はサーバ側に残す (完全削除は社長運用手順で対応)。
+    try {
+      await logout();
+    } catch (err) {
+      console.warn('[DangerZone] logout failed:', err);
+    }
     navigate('/', { replace: true });
   };
 

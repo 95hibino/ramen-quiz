@@ -6,8 +6,14 @@ export function Header(): JSX.Element {
   const currentUser = useAuthStore((s) => s.currentUser);
   const logout = useAuthStore((s) => s.logout);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Supabase Auth のセッションクリアも含まれるため await する。
+    // 失敗しても navigate は実行してユーザーを迷子にしない。
+    try {
+      await logout();
+    } catch (err) {
+      console.warn('[Header] logout failed:', err);
+    }
     navigate('/', { replace: true });
   };
 

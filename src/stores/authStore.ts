@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AuthRepository } from '@/lib/authRepository';
-import { localAuthRepository } from '@/lib/localAuthRepository';
+import { compositeAuthRepository } from '@/lib/compositeAuthRepository';
+import { restoreCurrentUser, supabaseLogout } from '@/lib/supabaseAuthRepository';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import type { LoginInput, SignupInput, User } from '@/types/account';
 import { STORAGE_KEYS } from '@/lib/storage';
 import { upsertPublicProfile } from '@/lib/supabasePublicProfileRepository';
@@ -15,22 +17,33 @@ interface AuthState {
 
   signup: (input: SignupInput) => Promise<User>;
   login: (input: LoginInput) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
+
+  /**
+   * mount 時に Supabase Auth のセッションから currentUser を復元する。
+   * Supabase 未接続時は persist 済みの localStorage `currentUser` をそのまま維持する。
+   *
+   * Supabase 接続時に localStorage 側の currentUser があってもセッションが無ければ、
+   * 「旧 localStorage 認証ユーザー」なのでクリアして再ログインを促す。
+   */
+  syncFromSession: () => Promise<void>;
 }
 
 /**
- * 認証 Zustand ストア (`persist` で localStorage 同期)。
+ * 認証 Zustand ストア。
  *
- * 永続化されるのは `currentUser` のみ。トランジエントな `status` / `errorMessage` は
- * リロードで初期化される。
- *
- * リポジトリ層はテスト容易性のためファクトリ経由でも生成できる。
+ * Phase 3 で Supabase Auth に移行:
+ * - `signup` / `login` / `logout` は本体 (compositeAuthRepository) 経由。
+ *   Supabase 接続時は `auth.uid()` ベースのセッションが張られる。
+ * - `currentUser` は永続化する (UI の即時表示用)。真実のセッションは Supabase Auth 側の
+ *   `ramen-quiz:supabase-auth` に保存されている。
+ * - mount 時に `syncFromSession()` を呼び、Supabase セッションと currentUser を同期する。
  */
-export function createAuthStore(repository: AuthRepository = localAuthRepository) {
+export function createAuthStore(repository: AuthRepository = compositeAuthRepository) {
   return create<AuthState>()(
     persist(
-      (set) => ({
+      (set, get) => ({
         currentUser: null,
         status: 'idle',
         errorMessage: null,
@@ -39,8 +52,9 @@ export function createAuthStore(repository: AuthRepository = localAuthRepository
           set({ status: 'loading', errorMessage: null });
           try {
             const user = await repository.signup(input);
-            // ランキング共有のため公開プロフィールを Supabase に upsert する。
-            // Supabase 未接続時は no-op、失敗しても signup は成功扱い。
+            // Supabase Auth 実装では supabaseAuthRepository.signup 内で既に
+            // upsert 済みだが、composite の localAuthRepository 経路でも
+            // Supabase 接続中なら upsert を行うために呼ぶ (冪等)。
             void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
@@ -55,8 +69,6 @@ export function createAuthStore(repository: AuthRepository = localAuthRepository
           set({ status: 'loading', errorMessage: null });
           try {
             const user = await repository.login(input);
-            // 別端末での初回ログイン等でプロフィールが Supabase に無いケースに備え、
-            // ログイン成功時にも upsert する (冪等)。
             void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
@@ -67,12 +79,40 @@ export function createAuthStore(repository: AuthRepository = localAuthRepository
           }
         },
 
-        logout: () => {
+        logout: async () => {
+          // Supabase セッションもクリアする。ローカル運用時は no-op。
+          try {
+            await supabaseLogout();
+          } catch (err) {
+            console.warn('[authStore] supabaseLogout failed:', err);
+          }
           set({ currentUser: null, status: 'idle', errorMessage: null });
         },
 
         clearError: () => {
           set({ status: 'idle', errorMessage: null });
+        },
+
+        syncFromSession: async () => {
+          // Supabase 未接続時: localStorage 側の currentUser をそのまま採用 (旧挙動維持)
+          if (!isSupabaseConfigured()) return;
+
+          try {
+            const user = await restoreCurrentUser();
+            if (user) {
+              set({ currentUser: user });
+              return;
+            }
+            // Supabase セッション無し。persist 済みの currentUser がいるならレガシー扱いで破棄。
+            if (get().currentUser) {
+              console.info(
+                '[authStore] レガシー localStorage セッションを検出。Supabase セッションが無いためクリアします。',
+              );
+              set({ currentUser: null });
+            }
+          } catch (err) {
+            console.warn('[authStore] syncFromSession failed:', err);
+          }
         },
       }),
       {
