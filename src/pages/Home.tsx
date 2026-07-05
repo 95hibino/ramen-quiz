@@ -103,6 +103,23 @@ export function Home(): JSX.Element {
         </div>
       </section>
 
+      <section className="card">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-2xl" aria-hidden="true">
+              📚
+            </p>
+            <h2 className="mt-2 text-xl font-black text-ramen-nori">学習モード</h2>
+            <p className="mt-1 text-sm text-ramen-soy/80">
+              間違えた問題は自動で保存され、いつでも復習できます。★ でお気に入り登録した問題も一覧で見返せます。
+            </p>
+          </div>
+          <Link to="/learn" className="btn-secondary self-start sm:self-center">
+            復習する
+          </Link>
+        </div>
+      </section>
+
       <section className="grid gap-4 sm:grid-cols-3">
         <FeatureCard
           icon="🥢"

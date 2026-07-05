@@ -27,6 +27,9 @@ export function Header(): JSX.Element {
           <Link to="/quiz/photo" className="text-ramen-chili hover:underline">
             写真当てクイズ
           </Link>
+          <Link to="/learn" className="text-ramen-nori hover:underline">
+            復習
+          </Link>
           <Link to="/ranking" className="text-ramen-soy hover:underline">
             ランキング
           </Link>

@@ -4,6 +4,7 @@ import { useQuizStore } from '@/stores/quizStore';
 import { usePhotoQuizStore } from '@/stores/photoQuizStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScoreStore } from '@/stores/scoreStore';
+import { useWrongAnswersStore } from '@/stores/wrongAnswersStore';
 import { ResultScreen } from '@/components/quiz/ResultScreen';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
@@ -39,6 +40,7 @@ export function Result(): JSX.Element {
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const recordScore = useScoreStore((s) => s.recordScore);
+  const recordWrongAnswer = useWrongAnswersStore((s) => s.record);
 
   // どちらのクイズが完了状態か判定 (両方完了は通常起きないが、写真クイズを優先)
   const activeQuizType: 'knowledge' | 'photo' | null =
@@ -59,12 +61,26 @@ export function Result(): JSX.Element {
   const answers = activeQuizType === 'photo' ? photoAnswers : knowledgeAnswers;
 
   // ログイン中なら結果到達時にスコアを 1 回だけ記録する。
+  // また、間違えた問題は学習モード用に (未ログインでも) localStorage に記録する。
   const recordedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeQuizType === null || questions.length === 0 || !currentUser) return;
-    const sessionKey = `${currentUser.id}:${activeQuizType}:${questions.map((q) => q.id).join(',')}:${answers.length}`;
+    if (activeQuizType === null || questions.length === 0) return;
+    // ログイン有無に関係なくセッションキーで重複記録を防ぐ (未ログイン時は 'guest')。
+    const uid = currentUser?.id ?? 'guest';
+    const sessionKey = `${uid}:${activeQuizType}:${questions.map((q) => q.id).join(',')}:${answers.length}`;
     if (recordedRef.current === sessionKey) return;
     recordedRef.current = sessionKey;
+
+    // 間違えた問題を学習モードストアに記録 (ログイン不要)。
+    // 復習ページで正解できたときは remove されるので、正解して覚えたものは自動で消える。
+    for (const a of answers) {
+      if (!a.isCorrect) {
+        recordWrongAnswer(activeQuizType, a.questionId);
+      }
+    }
+
+    // スコアはログイン中のみ記録する (匿名ランキングを避けるため)。
+    if (!currentUser) return;
 
     const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
     const correctCount = answers.filter((a) => a.isCorrect).length;
@@ -95,7 +111,7 @@ export function Result(): JSX.Element {
         console.warn('[Result] 世界ランキングへのスコア反映に失敗:', err);
       });
     }
-  }, [activeQuizType, questions, answers, currentUser, knowledgeCategory, recordScore]);
+  }, [activeQuizType, questions, answers, currentUser, knowledgeCategory, recordScore, recordWrongAnswer]);
 
   if (activeQuizType === null || questions.length === 0) {
     return <p className="card text-center">結果がありません。</p>;

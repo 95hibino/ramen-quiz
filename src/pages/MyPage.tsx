@@ -97,6 +97,24 @@ export function MyPage(): JSX.Element {
         ) : null}
       </div>
 
+      {/* 学習モード導線 (お気に入り + 間違えた問題の総合復習) */}
+      <div className="card">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-2xl" aria-hidden="true">
+              📚
+            </p>
+            <h2 className="mt-1 text-lg font-bold text-ramen-soy">学習モードで復習</h2>
+            <p className="mt-1 text-sm text-ramen-soy/70">
+              間違えた問題は自動保存されます。「覚えた」を押すと一覧から外れて達成感が味わえます。
+            </p>
+          </div>
+          <Link to="/learn" className="btn-secondary self-start sm:self-center">
+            復習を始める
+          </Link>
+        </div>
+      </div>
+
       {/* お気に入り問題 */}
       <FavoritesSection />
 
