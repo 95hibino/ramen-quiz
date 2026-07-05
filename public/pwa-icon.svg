@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!--
+    ラーメンクイズ PWA アイコン (通常用途)。
+    ホーム画面追加時の表示、favicon、Apple Touch Icon などで使用。
+    512x512 で作成し、192x192 でもきれいにスケールダウンする。
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4c95d"/>
+      <stop offset="100%" stop-color="#d2452f"/>
+    </linearGradient>
+    <radialGradient id="bowl" cx="0.5" cy="0.55" r="0.55">
+      <stop offset="0%" stop-color="#5b3a1f"/>
+      <stop offset="100%" stop-color="#3a2513"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 背景 (角丸正方形) -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- 湯気 (装飾) -->
+  <path d="M 170 130 Q 180 100, 170 70 Q 160 40, 170 20"
+        stroke="#fff7e6" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.7"/>
+  <path d="M 256 130 Q 266 100, 256 70 Q 246 40, 256 20"
+        stroke="#fff7e6" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.7"/>
+  <path d="M 342 130 Q 352 100, 342 70 Q 332 40, 342 20"
+        stroke="#fff7e6" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.7"/>
+
+  <!-- ラーメン丼 (楕円で丼を表現) -->
+  <ellipse cx="256" cy="330" rx="180" ry="130" fill="url(#bowl)"/>
+
+  <!-- スープ (丼の上面) -->
+  <ellipse cx="256" cy="230" rx="180" ry="45" fill="#e07c1a"/>
+
+  <!-- 麺 (曲線で複数本を表現) -->
+  <path d="M 120 220 Q 180 190 240 220 Q 300 250 360 210 Q 400 200 400 235"
+        stroke="#fef6e4" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M 130 240 Q 200 210 270 240 Q 340 270 380 230"
+        stroke="#fdf3d5" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+  <!-- ナルト (かまぼこ) -->
+  <circle cx="180" cy="215" r="22" fill="#fff7e6" stroke="#d2452f" stroke-width="3"/>
+  <path d="M 180 200 Q 190 215 180 230 Q 170 215 180 200 Z" fill="#d2452f"/>
+
+  <!-- 味玉 -->
+  <ellipse cx="330" cy="220" rx="26" ry="22" fill="#f6c766"/>
+  <ellipse cx="330" cy="222" rx="14" ry="10" fill="#e07c1a" opacity="0.6"/>
+
+  <!-- 海苔 -->
+  <rect x="240" y="195" width="30" height="42" fill="#1f2a37" rx="2"/>
+</svg>

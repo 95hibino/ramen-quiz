@@ -3,6 +3,8 @@ import { Route, Routes } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { Footer } from '@/components/common/Footer';
 import { LoadingFallback } from '@/components/common/LoadingFallback';
+import { InstallPrompt } from '@/components/common/InstallPrompt';
+import { OfflineIndicator } from '@/components/common/OfflineIndicator';
 import { useAuthStore } from '@/stores/authStore';
 
 // Route-based code splitting
@@ -57,6 +59,7 @@ function App(): JSX.Element {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <OfflineIndicator />
       <Header />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <Suspense fallback={<LoadingFallback />}>
@@ -86,6 +89,7 @@ function App(): JSX.Element {
         </Suspense>
       </main>
       <Footer />
+      <InstallPrompt />
     </div>
   );
 }

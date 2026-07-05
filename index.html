@@ -2,8 +2,18 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/pwa-icon.svg" />
+    <link rel="apple-touch-icon" href="/pwa-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA: モバイル Web ブラウザのアドレスバー色 (ステータスバーにも反映) -->
+    <meta name="theme-color" content="#d2452f" />
+    <!-- iOS Safari: ホーム画面追加時にフルスクリーン化 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ラーメンクイズ" />
+    <!-- manifest は vite-plugin-pwa がビルド時に生成する (/manifest.webmanifest) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Google Search Console 所有権確認 -->
     <meta name="google-site-verification" content="tBBGArHpR4F9BBkLGwg-21ehHVNmc8cro6fMuC1QOcc" />
