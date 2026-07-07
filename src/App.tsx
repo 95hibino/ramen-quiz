@@ -38,6 +38,9 @@ const Login = lazy(() => import('@/pages/Login').then((m) => ({ default: m.Login
 const Ranking = lazy(() => import('@/pages/Ranking').then((m) => ({ default: m.Ranking })));
 const MyPage = lazy(() => import('@/pages/MyPage').then((m) => ({ default: m.MyPage })));
 const Learn = lazy(() => import('@/pages/Learn').then((m) => ({ default: m.Learn })));
+const LearnQuizPlay = lazy(() =>
+  import('@/pages/LearnQuizPlay').then((m) => ({ default: m.LearnQuizPlay })),
+);
 const Privacy = lazy(() => import('@/pages/Privacy').then((m) => ({ default: m.Privacy })));
 const Terms = lazy(() => import('@/pages/Terms').then((m) => ({ default: m.Terms })));
 const Contact = lazy(() => import('@/pages/Contact').then((m) => ({ default: m.Contact })));
@@ -77,6 +80,7 @@ function App(): JSX.Element {
             <Route path="/ranking" element={<Ranking />} />
             <Route path="/mypage" element={<MyPage />} />
             <Route path="/learn" element={<Learn />} />
+            <Route path="/learn/quiz" element={<LearnQuizPlay />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/contact" element={<Contact />} />

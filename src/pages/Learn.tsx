@@ -8,6 +8,7 @@
  * ランキング機能とは独立し、端末単位で成長するタイプの機能。
  */
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
@@ -15,14 +16,32 @@ import { WrongAnswersSection } from '@/components/learn/WrongAnswersSection';
 import { FavoritesSection } from '@/components/mypage/FavoritesSection';
 import { useWrongAnswersStore } from '@/stores/wrongAnswersStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
+import { useQuizStore } from '@/stores/quizStore';
+import { QUESTIONS_PER_SESSION } from '@/config/quizConfig';
 
 type Tab = 'wrong' | 'favorites';
 
 export function Learn(): JSX.Element {
-  const wrongCount = useWrongAnswersStore((s) => s.wrongAnswers.length);
+  const navigate = useNavigate();
+  const wrongAnswers = useWrongAnswersStore((s) => s.wrongAnswers);
   const favoritesCount = useFavoritesStore((s) => s.favorites.length);
+  const startReviewSession = useQuizStore((s) => s.startReviewSession);
+  const wrongCount = wrongAnswers.length;
+
+  // 知識クイズの間違えた問題数 (復習クイズは知識クイズのみ対応)。
+  // 写真クイズは quizStore と別ストアなので Phase 4 で対応予定。
+  const knowledgeWrongIds = wrongAnswers
+    .filter((w) => w.quizType === 'knowledge')
+    .map((w) => w.questionId);
+  const knowledgeWrongCount = knowledgeWrongIds.length;
+
   // 初期タブは「間違えた問題があればそこ、無ければお気に入り」の優先度で選ぶ。
   const [tab, setTab] = useState<Tab>(wrongCount > 0 ? 'wrong' : 'favorites');
+
+  const handleStartReview = (): void => {
+    startReviewSession(knowledgeWrongIds);
+    navigate('/learn/quiz');
+  };
 
   const breadcrumbSchema: Record<string, unknown> = {
     '@context': 'https://schema.org',
@@ -62,6 +81,38 @@ export function Learn(): JSX.Element {
           間違えた問題は自動的に「間違えた問題」に貯まります。復習して「✓ 覚えた」を押すと一覧から外れます。<br />
           気になった問題はクイズ画面の ★ ボタンで「お気に入り」に保存でき、いつでも見直せます。
         </p>
+      </section>
+
+      {/* 復習クイズで再挑戦 (知識クイズのみ、Phase 4 で写真対応予定) */}
+      <section className="card">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-2xl" aria-hidden="true">
+              🎯
+            </p>
+            <h2 className="mt-1 text-lg font-bold text-ramen-soy">
+              間違えた問題だけで {QUESTIONS_PER_SESSION} 問クイズ
+            </h2>
+            <p className="mt-1 text-sm text-ramen-soy/70">
+              知識クイズで間違えた問題からランダムに出題します (最大 {QUESTIONS_PER_SESSION} 問)。<br />
+              正解できた問題は「間違えた問題」一覧から自動で外れます。
+            </p>
+            <p className="mt-1 text-xs text-ramen-soy/60">
+              対象: <span className="font-bold">{knowledgeWrongCount} 問</span>
+              {knowledgeWrongCount === 0
+                ? ' (まずはクイズをプレイして間違えた問題を貯めましょう)'
+                : null}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartReview}
+            disabled={knowledgeWrongCount === 0}
+            className="btn-primary self-start whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 sm:self-center"
+          >
+            復習クイズを開始
+          </button>
+        </div>
       </section>
 
       {/* タブ */}

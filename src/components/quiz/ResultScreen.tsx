@@ -23,6 +23,15 @@ interface ResultScreenProps {
   category?: QuizCategory | null;
   /** ログイン中ユーザー名。シェア文に含める (任意)。 */
   username?: string | null;
+  /**
+   * 復習セッションの結果表示か。true のとき:
+   * - スコアはランキング未反映であることを明示
+   * - 「もう一度プレイ」は「残っている間違えた問題で復習」ラベルに切替
+   * - トップ導線は「学習モードに戻る」に切替
+   */
+  isReview?: boolean;
+  /** 復習セッション後に残っている間違えた問題数 (isReview=true 時のみ意味を持つ)。 */
+  remainingWrongCount?: number;
 }
 
 export function ResultScreen({
@@ -33,6 +42,8 @@ export function ResultScreen({
   isLoggedIn = false,
   category = null,
   username = null,
+  isReview = false,
+  remainingWrongCount = 0,
 }: ResultScreenProps): JSX.Element {
   const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
   const correctCount = answers.filter((a) => a.isCorrect).length;
@@ -66,11 +77,20 @@ export function ResultScreen({
         </p>
         <p className="mt-4 text-lg font-bold text-ramen-soy">{renderGrade(rate)}</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <button type="button" className="btn-primary" onClick={onRetry}>
-            もう一度プレイ
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onRetry}
+            disabled={isReview && remainingWrongCount === 0}
+          >
+            {isReview
+              ? remainingWrongCount === 0
+                ? '全問正解！復習完了 🎉'
+                : `残り ${remainingWrongCount} 問を復習`
+              : 'もう一度プレイ'}
           </button>
-          <Link to="/" className="btn-secondary">
-            トップに戻る
+          <Link to={isReview ? '/learn' : '/'} className="btn-secondary">
+            {isReview ? '学習モードに戻る' : 'トップに戻る'}
           </Link>
         </div>
         <div className="mt-6 border-t border-ramen-soy/10 pt-4">
@@ -84,7 +104,11 @@ export function ResultScreen({
         </div>
       </div>
 
-      {!isLoggedIn ? (
+      {isReview ? (
+        <div className="card text-center text-sm text-ramen-soy/80">
+          復習セッションのスコアは<span className="font-bold">ランキングには反映されません</span>。純粋な学習用の練習モードです。
+        </div>
+      ) : !isLoggedIn ? (
         <div className="card border-2 border-dashed border-ramen-chili/40 bg-ramen-broth/10 text-center">
           <p className="text-base font-bold text-ramen-soy">
             アカウント作成でスコアをランキングに記録できます

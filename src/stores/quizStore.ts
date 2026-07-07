@@ -1,15 +1,26 @@
 import { create } from 'zustand';
+import rawQuestions from '@/data/questions.json';
 import type { AnswerRecord, QuizCategory, QuizQuestion } from '@/types/quiz';
 import { calculatePoints } from '@/lib/score';
 import { mockQuestionRepository } from '@/lib/mockQuestionRepository';
 import type { QuestionRepository } from '@/lib/questionRepository';
+import { shuffle } from '@/lib/shuffle';
 import { QUESTIONS_PER_SESSION } from '@/config/quizConfig';
 
 export type SessionStatus = 'idle' | 'loading' | 'playing' | 'finished' | 'error';
 
+/**
+ * セッション種別。
+ * - `category`: 通常のカテゴリ選択プレイ (basic/regional/expert)。
+ * - `review`: 学習モードから、間違えた問題だけを再挑戦するプレイ。
+ */
+export type SessionMode = 'category' | 'review';
+
 interface QuizState {
   status: SessionStatus;
   category: QuizCategory | null;
+  /** セッション種別 (通常 or 復習)。Result 画面がナビ先を切り替えるために参照する。 */
+  mode: SessionMode;
   questions: QuizQuestion[];
   currentIndex: number;
   answers: AnswerRecord[];
@@ -17,6 +28,12 @@ interface QuizState {
 
   /** 指定カテゴリで新規セッションを開始する。 */
   startSession: (category: QuizCategory) => Promise<void>;
+  /**
+   * 学習モード用: 指定問題 ID のみで復習セッションを開始する。
+   * ID から `questions.json` を引き、シャッフルして最大 QUESTIONS_PER_SESSION 問を採用する。
+   * 対象が 0 件なら error に落ちる。カテゴリは null のままにする。
+   */
+  startReviewSession: (questionIds: string[]) => void;
   /** 現在の問題に回答する。 selectedIdx=null は時間切れ。 */
   submitAnswer: (selectedIdx: number | null, remainingSec: number) => void;
   /** 次の問題に進む。最終問題なら status を 'finished' にする。 */
@@ -28,6 +45,7 @@ interface QuizState {
 const INITIAL_STATE = {
   status: 'idle' as SessionStatus,
   category: null,
+  mode: 'category' as SessionMode,
   questions: [] as QuizQuestion[],
   currentIndex: 0,
   answers: [] as AnswerRecord[],
@@ -43,7 +61,7 @@ export function createQuizStore(repository: QuestionRepository = mockQuestionRep
     ...INITIAL_STATE,
 
     startSession: async (category) => {
-      set({ ...INITIAL_STATE, status: 'loading', category });
+      set({ ...INITIAL_STATE, status: 'loading', category, mode: 'category' });
       try {
         const questions = await repository.fetchQuestionsByCategory(category, QUESTIONS_PER_SESSION);
         if (questions.length === 0) {
@@ -55,6 +73,31 @@ export function createQuizStore(repository: QuestionRepository = mockQuestionRep
         const message = err instanceof Error ? err.message : '問題の取得に失敗しました。';
         set({ status: 'error', errorMessage: message });
       }
+    },
+
+    startReviewSession: (questionIds) => {
+      // ID セット (JSON 側の順序に依存せずに O(1) ルックアップするため)。
+      const idSet = new Set(questionIds);
+      const all = rawQuestions as QuizQuestion[];
+      const matched = all.filter((q) => idSet.has(q.id));
+      if (matched.length === 0) {
+        set({
+          ...INITIAL_STATE,
+          mode: 'review',
+          status: 'error',
+          errorMessage: '復習する問題がまだ登録されていません。まずはクイズをプレイしてみましょう。',
+        });
+        return;
+      }
+      const picked = shuffle(matched).slice(0, QUESTIONS_PER_SESSION);
+      set({
+        ...INITIAL_STATE,
+        mode: 'review',
+        status: 'playing',
+        questions: picked,
+        currentIndex: 0,
+        answers: [],
+      });
     },
 
     submitAnswer: (selectedIdx, remainingSec) => {
