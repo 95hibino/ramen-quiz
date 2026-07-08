@@ -7,7 +7,7 @@
 1. **ホーム画面追加**: スマホ / デスクトップにアプリとしてインストール可能
 2. **オフラインプレイ**: 知識クイズ・お気に入り・復習は通信断でも動作
 3. **フルスクリーン表示**: インストール後はブラウザ UI 無しで起動
-4. **アップデート自動反映**: Service Worker が背景で新版を取得、次回リロード時に反映
+4. **アップデート通知**: 新版検出時にトーストで案内、ユーザー同意でリロード
 5. **オフライン通知**: 通信断時はページ上部に赤帯で明示
 
 ## 技術スタック
@@ -25,6 +25,7 @@
 | `index.html` | `<link rel="manifest">` / theme-color / apple-touch-icon |
 | `src/components/common/InstallPrompt.tsx` | 「ホーム画面に追加」バナー |
 | `src/components/common/OfflineIndicator.tsx` | オフライン通知帯 |
+| `src/components/common/UpdatePrompt.tsx` | 新版検出トースト (`useRegisterSW` + `updateServiceWorker`) |
 
 ## キャッシュ戦略
 
@@ -91,9 +92,20 @@ PWA 対応後の Lighthouse (Chrome DevTools → Lighthouse) で以下を確認:
 
 コード変更後:
 1. `git push` → Vercel が新バージョンをデプロイ
-2. 既にアプリをインストール済みのユーザーは、次回アクセス時に SW が背景で更新を検知
-3. `registerType: 'autoUpdate'` により、次のリロードで自動的に新版が適用される
-4. ユーザーに更新通知を出したい場合は `virtual:pwa-register` の `onNeedRefresh` フックを使う (現状は未実装)
+2. 既にアプリをインストール済みのユーザーは、次回アクセス時に Service Worker が
+   バックグラウンドで新版を検知
+3. `registerType: 'prompt'` により、新版は waiting 状態で保留される
+4. `UpdatePrompt` が `needRefresh` を検知して画面下部に「新しいバージョンが利用可能です」
+   トーストを表示
+5. ユーザーが「今すぐ更新」を押すと `updateServiceWorker(true)` を呼び、
+   新版 SW をアクティベート → 自動リロード
+6. 「あとで」を押した場合は 30 分間トーストを再表示しない
+   (localStorage `ramen-quiz:pwa-update-dismissed-at`)
+
+なぜ `autoUpdate` ではなく `prompt` にしたか:
+- クイズプレイ中に画面が突然リロードされて回答が飛ぶ事故を防ぐ
+- ユーザーに更新タイミングの主導権を渡し、UX を予測可能にする
+- モバイル通信量を意識するユーザー向けにも配慮
 
 ## 既知の制約
 

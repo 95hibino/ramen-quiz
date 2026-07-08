@@ -5,6 +5,7 @@ import { Footer } from '@/components/common/Footer';
 import { LoadingFallback } from '@/components/common/LoadingFallback';
 import { InstallPrompt } from '@/components/common/InstallPrompt';
 import { OfflineIndicator } from '@/components/common/OfflineIndicator';
+import { UpdatePrompt } from '@/components/common/UpdatePrompt';
 import { useAuthStore } from '@/stores/authStore';
 
 // Route-based code splitting
@@ -98,6 +99,7 @@ function App(): JSX.Element {
       </main>
       <Footer />
       <InstallPrompt />
+      <UpdatePrompt />
     </div>
   );
 }

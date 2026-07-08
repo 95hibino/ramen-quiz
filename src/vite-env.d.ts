@@ -1,4 +1,6 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
+/// <reference types="vite-plugin-pwa/react" />
 
 /**
  * Vite が `import.meta.env` に注入する環境変数の型定義。

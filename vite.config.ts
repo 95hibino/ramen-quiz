@@ -10,13 +10,14 @@ export default defineConfig({
     // ================================================================
     // PWA プラグイン設定 (Phase 3: オフライン対応 + ホーム画面追加)
     // ================================================================
-    // - registerType: 'autoUpdate' → Service Worker が背景で更新をチェックし、
-    //   新バージョンが見つかったら次回リロード時に自動反映される
+    // - registerType: 'prompt' → 新版 SW が検知されても自動アクティベートせず、
+    //   UpdatePrompt コンポーネント (`useRegisterSW`) 経由でユーザーに通知する。
+    //   これによりプレイ中に画面が突然リロードされて回答が飛ぶ事故を防ぐ。
     // - manifest: Web App Manifest を build 時に自動生成
     // - workbox: Service Worker のキャッシュ戦略。SPA なので index.html は
     //   NetworkFirst、静的アセットは StaleWhileRevalidate を使う
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['og-default.svg', 'pwa-icon.svg', 'pwa-icon-maskable.svg', 'robots.txt'],
       manifest: {
         name: 'ラーメンクイズ',
