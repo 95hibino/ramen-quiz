@@ -12,6 +12,7 @@ import {
   optimizeImage,
   type OptimizedImage,
 } from '@/lib/imageOptimizer';
+import { moderateImage } from '@/lib/imageModeration';
 import { PREFECTURES, isValidPrefecture, type Prefecture } from '@/data/prefectures';
 import {
   DIFFICULTY_OPTIONS,
@@ -101,7 +102,9 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
   const [shopDescription, setShopDescription] = useState('');
 
   const [errors, setErrors] = useState<FormErrors>({});
-  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [submitState, setSubmitState] = useState<
+    'idle' | 'moderating' | 'submitting' | 'success' | 'error'
+  >('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -219,6 +222,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
     !!optimized &&
     !imageError &&
     submitState !== 'submitting' &&
+    submitState !== 'moderating' &&
     supabaseReady;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -270,6 +274,24 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
       return;
     }
 
+    // 1) Cloud Vision SafeSearch モデレーション。
+    //    GOOGLE_VISION_API_KEY 未設定 or Vision API 障害時は disabled: true が返り、
+    //    投稿は素通りする (Fail-Open)。安全でない画像は reason を UI に表示して中止。
+    setSubmitState('moderating');
+    try {
+      const moderation = await moderateImage(optimized.blob);
+      if (!moderation.safe) {
+        setSubmitError(moderation.reason ?? '画像が不適切と判定されたため投稿できません。');
+        setSubmitState('error');
+        return;
+      }
+    } catch (err) {
+      // moderateImage 内で fetch エラーは既に握り潰されるためここには通常来ない。
+      // 万一に備えたセーフティネット。
+      console.warn('[PhotoSubmit] moderation call threw:', err);
+    }
+
+    // 2) Supabase に投稿。
     setSubmitState('submitting');
     try {
       await compositePhotoQuestionRepository.submit(submission, optimized.blob);
@@ -603,7 +625,11 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
             disabled={!isFormReady}
             aria-disabled={!isFormReady}
           >
-            {submitState === 'submitting' ? '送信中...' : '投稿する'}
+            {submitState === 'moderating'
+              ? '画像を検査中...'
+              : submitState === 'submitting'
+                ? '送信中...'
+                : '投稿する'}
           </button>
           {!supabaseReady ? (
             <p className="text-xs font-bold text-ramen-chili">
