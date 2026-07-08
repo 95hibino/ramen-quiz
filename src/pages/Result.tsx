@@ -34,20 +34,25 @@ export function Result(): JSX.Element {
   const knowledgeStartSession = useQuizStore((s) => s.startSession);
   const startReviewSession = useQuizStore((s) => s.startReviewSession);
 
-  // 写真クイズ
+  // 写真クイズ (通常フィルタ + 復習セッション共通)
   const photoStatus = usePhotoQuizStore((s) => s.status);
   const photoQuestions = usePhotoQuizStore((s) => s.questions);
   const photoAnswers = usePhotoQuizStore((s) => s.answers);
+  const photoMode = usePhotoQuizStore((s) => s.mode);
   const photoStartSession = usePhotoQuizStore((s) => s.startSession);
+  const startPhotoReviewSession = usePhotoQuizStore((s) => s.startReviewSession);
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const recordScore = useScoreStore((s) => s.recordScore);
   const recordWrongAnswer = useWrongAnswersStore((s) => s.record);
   const removeWrongAnswer = useWrongAnswersStore((s) => s.remove);
-  // 復習セッション後に残っている「知識クイズで間違えた問題」の数。
+  // 復習セッション後に残っている間違えた問題の数 (クイズタイプ別)。
   // ResultScreen で「残り N 問を復習」ボタンのラベルに使う。
   const remainingKnowledgeWrongCount = useWrongAnswersStore(
     (s) => s.wrongAnswers.filter((w) => w.quizType === 'knowledge').length,
+  );
+  const remainingPhotoWrongCount = useWrongAnswersStore(
+    (s) => s.wrongAnswers.filter((w) => w.quizType === 'photo').length,
   );
 
   // どちらのクイズが完了状態か判定 (両方完了は通常起きないが、写真クイズを優先)
@@ -69,8 +74,13 @@ export function Result(): JSX.Element {
   const answers = activeQuizType === 'photo' ? photoAnswers : knowledgeAnswers;
 
   // 復習セッションの完了かどうか。Retry / ナビ先の切替に使う。
-  // 写真クイズには復習モードが無いので必ず false になる。
-  const isReviewSession = activeQuizType === 'knowledge' && knowledgeMode === 'review';
+  // 知識クイズ・写真クイズどちらでも復習モードで走った場合に true。
+  const isReviewSession =
+    (activeQuizType === 'knowledge' && knowledgeMode === 'review') ||
+    (activeQuizType === 'photo' && photoMode === 'review');
+  // ResultScreen に渡す「残り N 問」の数はクイズタイプに合わせて切り替える。
+  const remainingWrongCount =
+    activeQuizType === 'photo' ? remainingPhotoWrongCount : remainingKnowledgeWrongCount;
 
   // ログイン中なら結果到達時にスコアを 1 回だけ記録する。
   // また、間違えた問題は学習モード用に (未ログインでも) localStorage に記録する。
@@ -148,13 +158,27 @@ export function Result(): JSX.Element {
   }
 
   const handleRetry = async () => {
-    if (activeQuizType === 'photo') {
+    // 写真クイズ (通常フィルタ) の再挑戦
+    if (activeQuizType === 'photo' && !isReviewSession) {
       await photoStartSession();
       navigate('/quiz/photo/play');
       return;
     }
-    // 復習セッションの再挑戦: 覚えていなかった問題だけをもう一度出題する。
-    // 全問正解して間違えた問題が 0 になったら Learn 画面に戻して達成感を演出。
+    // 写真クイズ (復習セッション) の再挑戦: 覚えていない写真だけをもう一度。
+    if (activeQuizType === 'photo' && isReviewSession) {
+      const remainingWrongIds = useWrongAnswersStore
+        .getState()
+        .wrongAnswers.filter((w) => w.quizType === 'photo')
+        .map((w) => w.questionId);
+      if (remainingWrongIds.length === 0) {
+        navigate('/learn', { replace: true });
+        return;
+      }
+      navigate('/learn/photo');
+      await startPhotoReviewSession(remainingWrongIds);
+      return;
+    }
+    // 知識クイズ (復習セッション) の再挑戦
     if (isReviewSession) {
       const remainingWrongIds = useWrongAnswersStore
         .getState()
@@ -168,6 +192,7 @@ export function Result(): JSX.Element {
       navigate('/learn/quiz');
       return;
     }
+    // 知識クイズ (通常セッション) の再挑戦
     if (!knowledgeCategory) {
       knowledgeReset();
       navigate('/quiz/knowledge');
@@ -249,7 +274,7 @@ export function Result(): JSX.Element {
         category={activeQuizType === 'knowledge' ? knowledgeCategory : null}
         username={currentUser?.username ?? null}
         isReview={isReviewSession}
-        remainingWrongCount={remainingKnowledgeWrongCount}
+        remainingWrongCount={remainingWrongCount}
       />
     </>
   );

@@ -38,6 +38,12 @@ export interface PhotoQuestionRepository {
    * 未実装のリポジトリは undefined を返す想定。
    */
   findBySubmitterId?(submitterId: string): Promise<PhotoQuestion[]>;
+  /**
+   * 指定 ID の問題群を取得する。学習モードの復習セッション用。
+   * ID の順序は保持しない (呼び出し側で shuffle する想定)。
+   * 見つからなかった ID は結果に含まれず、単に欠落する (エラーにはならない)。
+   */
+  findByIds(ids: string[]): Promise<PhotoQuestion[]>;
 }
 
 /** リポジトリが `submit` をサポートするかの型ガード。 */

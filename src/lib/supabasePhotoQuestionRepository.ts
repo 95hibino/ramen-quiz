@@ -317,4 +317,25 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
     }
     return questions;
   },
+
+  async findByIds(ids: string[]): Promise<PhotoQuestion[]> {
+    if (ids.length === 0) return [];
+    const client = getSupabaseClient();
+    if (!client) return [];
+    const { data, error } = await client
+      .from(USER_PHOTO_QUESTIONS_TABLE)
+      .select('*')
+      .in('id', ids);
+    if (error) {
+      console.warn('[supabasePhotoQuestionRepository] findByIds failed:', error.message);
+      return [];
+    }
+    const rows = (data ?? []) as UserPhotoQuestionRow[];
+    const questions: PhotoQuestion[] = [];
+    for (const row of rows) {
+      const q = rowToPhotoQuestion(row);
+      if (q) questions.push(q);
+    }
+    return questions;
+  },
 };

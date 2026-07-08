@@ -20,4 +20,11 @@ export const mockPhotoQuestionRepository: PhotoQuestionRepository = {
     }
     return count;
   },
+
+  async findByIds(ids: string[]): Promise<PhotoQuestion[]> {
+    if (ids.length === 0) return [];
+    const idSet = new Set(ids);
+    const all = rawPhotoQuestions as PhotoQuestion[];
+    return all.filter((q) => idSet.has(q.id));
+  },
 };

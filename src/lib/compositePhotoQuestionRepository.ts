@@ -60,4 +60,26 @@ export const compositePhotoQuestionRepository: PhotoQuestionRepository = {
     }
     return supabasePhotoQuestionRepository.submit(data, image);
   },
+
+  async findBySubmitterId(submitterId: string): Promise<PhotoQuestion[]> {
+    // マイページ「投稿履歴」用。ユーザー投稿は Supabase のみに存在するため
+    // モックの結果はマージ対象外 (モック問題には submitterId が無い)。
+    if (!isSupabaseConfigured() || !supabasePhotoQuestionRepository.findBySubmitterId) {
+      return [];
+    }
+    return supabasePhotoQuestionRepository.findBySubmitterId(submitterId);
+  },
+
+  async findByIds(ids: string[]): Promise<PhotoQuestion[]> {
+    if (ids.length === 0) return [];
+    // モックとリモートの両方を参照。id 重複はモック優先で解決する。
+    if (!isSupabaseConfigured()) {
+      return mockPhotoQuestionRepository.findByIds(ids);
+    }
+    const [mock, remote] = await Promise.all([
+      mockPhotoQuestionRepository.findByIds(ids),
+      supabasePhotoQuestionRepository.findByIds(ids),
+    ]);
+    return mergeUnique(mock, remote);
+  },
 };
