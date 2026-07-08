@@ -779,9 +779,14 @@ Phase 2 での運用中に不正が観測されたら、上表の高優先度案
 ### fake email 変換について
 
 Supabase Auth は Email 必須ですが、本サービスは個人情報を扱わない方針のため、
-ユーザー名から `sha256(username)` を計算して `<hex32>@ramen-quiz.internal` を生成し、
-Supabase Auth の Email として使います。IANA 予約 TLD `.internal` は公開ドメインで
-使えないため、実在ドメインとの衝突リスクなし。
+ユーザー名から `sha256(username)` を計算して `<hex32>@example.com` を生成し、
+Supabase Auth の Email として使います。
+
+**ドメインに `example.com` を使う理由**: 
+- IANA が保有し RFC 2606 で「documentation only」に予約された特殊ドメイン
+- 誰にも配送されない (万一 Confirm email が誤って ON になっても実害なし)
+- Supabase の recent email validator が `.internal` `.test` `.local` などの
+  「配送不可 TLD」を "invalid" として弾く仕様に対応するための選択
 
 ### 社長作業 1: Supabase ダッシュボード設定
 
@@ -862,7 +867,7 @@ CREATE POLICY "auth_scores_insert" ON quiz_scores
 1. `.env.local` / Vercel Environment Variables を再確認 (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY が正しいこと)
 2. サイトを開いて、旧ユーザーが自動ログアウトされていること
 3. **新規サインアップ**: ユーザー名 / パスワード / 都道府県 / 好きな店を入れて登録 → 成功
-4. Supabase Dashboard → **Authentication** → **Users** に `<hex>@ramen-quiz.internal` の
+4. Supabase Dashboard → **Authentication** → **Users** に `<hex>@example.com` の
    ユーザーが 1 行追加されていること
 5. Table Editor → `public_profiles` に対応する行が入っていること (id は auth.users.id と一致)
 6. クイズを 1 回プレイ → Table Editor → `quiz_scores` に user_id = auth.uid() の行が入ること

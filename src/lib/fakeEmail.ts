@@ -8,18 +8,22 @@
  *   ダミー email として使う。
  *
  * 変換規則:
- *   fake email = `<sha256_hex_32>@ramen-quiz.internal`
+ *   fake email = `<sha256_hex_32>@example.com`
  *
  * - 入力は `username.trim().normalize('NFKC').toLowerCase()` を経て安定化
  * - SHA-256 の先頭 32 文字 (128 bit) を local part に使用 → 衝突確率は事実上 0
- * - `.internal` TLD は IANA 予約 (RFC 6761) で公開ドメインとして使用不可 →
- *   実在ドメインとの衝突リスクなし
+ * - ドメイン部は `example.com` (IANA 予約、RFC 2606) を使用
+ *   - 実在するが「documentation only」で誰にも配送されない特殊ドメイン
+ *   - Supabase の email validator が `.internal` `.test` `.local` 等の
+ *     「配送不可 TLD」を弾く仕様に対応済みのため、より安全な `example.com` を採用
  *
- * このメールは Supabase ダッシュボードでは可視だが、外部への送信は行わない。
- * Supabase Auth 側で "confirm email" は無効化する必要がある (SUPABASE_SETUP.md §11)。
+ * このメールは Supabase ダッシュボードでは可視だが、外部への送信は行わない
+ * (Confirm email OFF を前提。SUPABASE_SETUP.md §11 参照)。
+ * 万一 Confirm email が有効になっていても、`example.com` は IANA が保有し
+ * どこにも配送されないため、実ユーザーに迷惑メールが届くリスクはない。
  */
 
-const FAKE_EMAIL_DOMAIN = 'ramen-quiz.internal';
+const FAKE_EMAIL_DOMAIN = 'example.com';
 
 function bufferToHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
