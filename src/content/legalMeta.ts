@@ -31,4 +31,4 @@ export const OPERATOR_CONTACT: string =
  * 法務ページの最終更新日 (YYYY-MM-DD)。
  * 変更があるたびに手動で更新する。
  */
-export const LEGAL_LAST_UPDATED = '2026-06-15';
+export const LEGAL_LAST_UPDATED = '2026-07-08';

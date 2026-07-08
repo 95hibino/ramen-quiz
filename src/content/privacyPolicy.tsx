@@ -58,6 +58,12 @@ export function PrivacyPolicyContent(): JSX.Element {
             <span className="font-bold">アクセスログ:</span>{' '}
             アクセス元 IP、リクエスト URL、ユーザーエージェントなど、ホスティング事業者である Vercel が自動的に収集する一般的なアクセスログ。
           </li>
+          <li>
+            <span className="font-bold">写真投稿時の自動判定用データ:</span>{' '}
+            写真クイズ投稿時に、投稿画像 (Web ブラウザ側で長辺 800px の WebP に最適化・EXIF 削除済み) を
+            不適切コンテンツ自動判定のため Google Cloud Vision API に一時的に送信します。
+            送信対象は画像バイナリのみで、投稿者のユーザー名・IP アドレス等の付随情報は送りません。
+          </li>
         </ul>
       </section>
 
@@ -83,6 +89,23 @@ export function PrivacyPolicyContent(): JSX.Element {
           <li>
             <span className="font-bold">Vercel Inc.（米国）:</span>{' '}
             本サービスのホスティングおよび配信に利用しています。アクセスログを自動収集します。
+          </li>
+          <li>
+            <span className="font-bold">Google LLC — Cloud Vision API（米国）:</span>{' '}
+            写真クイズ投稿時に、不適切コンテンツ (成人向け・暴力的表現・過激な内容) の自動判定のため、
+            投稿画像を Google Cloud Vision SafeSearch API に送信します。
+            送信された画像は判定処理のためにのみ使用され、
+            Google の
+            <a
+              href="https://cloud.google.com/vision/docs/data-usage"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mx-1 font-bold text-ramen-chili hover:underline"
+            >
+              データ利用ポリシー
+            </a>
+            に基づき、モデル学習には利用されません。
+            画像は判定完了後、Google 側の一時ログを除き保存されません。
           </li>
           <li>
             <span className="font-bold">Google AdSense（将来導入予定）:</span>{' '}
