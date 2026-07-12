@@ -107,6 +107,15 @@ export interface RankingEntry {
   achievedAt: string;
 }
 
+/**
+ * 自分の順位情報。ランキング画面で 100 位以下だった場合に末尾表示する用途。
+ * サーバ側で「自分より上位の人数 + 1」を計算して rank を確定。
+ */
+export interface MyRankingEntry extends RankingEntry {
+  /** 全体での順位 (1 始まり)。 */
+  rank: number;
+}
+
 /** リポジトリ層から返される標準エラー種別。 */
 export type AuthErrorCode =
   | 'username_taken'

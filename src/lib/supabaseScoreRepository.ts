@@ -17,6 +17,7 @@
 import { generateId } from '@/lib/storage';
 import type { RecordScoreInput, ScoreRepository } from '@/lib/scoreRepository';
 import type {
+  MyRankingEntry,
   RankingCategory,
   RankingEntry,
   ScoreRecord,
@@ -214,7 +215,56 @@ export const supabaseScoreRepository: ScoreRepository = {
     }
     return result;
   },
+
+  async fetchMyRanking(category: RankingCategory): Promise<MyRankingEntry | null> {
+    const client = getSupabaseClient();
+    if (!client) return null;
+    // §16 SECURITY DEFINER RPC。auth.uid() で自分の user_id を確定し、
+    // 自分の順位 (rank) と best_score 等をまとめて返す。
+    // 該当カテゴリでプレイしていなければ 0 行なので null 扱い。
+    const { data, error } = await client.rpc('get_my_ranking', {
+      p_ranking_category: category,
+    });
+    if (error) {
+      console.warn('[supabaseScoreRepository] fetchMyRanking RPC failed:', error.message);
+      return null;
+    }
+    // RPC の RETURNS TABLE は配列で返ってくる (0 or 1 行)。
+    const rows = Array.isArray(data) ? (data as MyRankingRpcRow[]) : [];
+    const row = rows[0];
+    if (!row) return null;
+    if (!isValidPrefecture(row.prefecture)) return null;
+
+    const user: User = {
+      id: '', // auth.uid の値だが RPC には返させていない。UI では isMe 判定に使わない (常に自分自身)
+      username: row.username,
+      prefecture: row.prefecture as Prefecture,
+      favoriteShop: row.favorite_shop,
+      createdAt: row.achieved_at,
+    };
+    return {
+      user,
+      rankingCategory: category,
+      rank: row.my_rank,
+      bestScore: row.best_score,
+      correctCount: row.correct_count,
+      totalCount: row.total_count,
+      achievedAt: row.achieved_at,
+    };
+  },
 };
+
+/** get_my_ranking RPC の返却行型。 */
+interface MyRankingRpcRow {
+  my_rank: number;
+  username: string;
+  prefecture: string;
+  favorite_shop: string;
+  best_score: number;
+  correct_count: number;
+  total_count: number;
+  achieved_at: string;
+}
 
 /**
  * プロフィール upsert を含む安全網付きの recordScore。

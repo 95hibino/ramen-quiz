@@ -1,4 +1,5 @@
 import type {
+  MyRankingEntry,
   RankingCategory,
   RankingEntry,
   ScoreRecord,
@@ -94,5 +95,11 @@ export const localScoreRepository: ScoreRepository = {
       return a.achievedAt.localeCompare(b.achievedAt);
     });
     return entries.slice(0, limit);
+  },
+
+  // ローカルモードでは「自分」を特定できない (localAuthRepository 経由でしか居ないので)。
+  // Supabase 未接続時のフォールバック用として null を返す。
+  async fetchMyRanking(_category: RankingCategory): Promise<MyRankingEntry | null> {
+    return null;
   },
 };

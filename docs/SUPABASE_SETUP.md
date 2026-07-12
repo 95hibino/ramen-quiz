@@ -1233,3 +1233,78 @@ GRANT EXECUTE ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER,
 - JWT 未付与時は `not_authenticated` で明示的に失敗 → 原因が特定できる
 - レート制限トリガー (`enforce_quiz_score_rate_limit`) は引き続き作動 (Bot 対策維持)
 - §11 の RLS ポリシー (直 INSERT 用) は残しつつ、クライアントは関数経路のみ利用
+
+---
+
+## §16 自分の順位取得 RPC (100 位以下でも末尾表示するため)
+
+ランキング上位 100 位を fetch した結果に自分が含まれていない (= 101 位以下) 場合、
+「自分の順位と点数」を末尾に表示するため、サーバ側で順位を計算する RPC を追加。
+
+順位計算ロジック:
+- 「自分の best_score より高いスコアを持つ人の数」+「同点だが自分より先に達成した人の数」+ 1
+- ORDER BY best_score DESC, achieved_at ASC のタイブレークと同じ
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_my_ranking(
+  p_ranking_category TEXT
+) RETURNS TABLE (
+  my_rank       INTEGER,
+  username      TEXT,
+  prefecture    TEXT,
+  favorite_shop TEXT,
+  best_score    INTEGER,
+  correct_count INTEGER,
+  total_count   INTEGER,
+  achieved_at   TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid TEXT;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+  IF p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+    RAISE EXCEPTION 'invalid_ranking_category';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    -- 自分より上位の人数 + 1 = 自分の順位
+    (
+      SELECT COUNT(*)::INTEGER + 1
+      FROM quiz_best_scores AS other
+      WHERE other.ranking_category = p_ranking_category
+        AND (
+          other.best_score > my.best_score
+          OR (other.best_score = my.best_score AND other.achieved_at < my.achieved_at)
+        )
+    ) AS my_rank,
+    p.username,
+    p.prefecture,
+    p.favorite_shop,
+    my.best_score,
+    my.correct_count,
+    my.total_count,
+    my.achieved_at
+  FROM quiz_best_scores AS my
+  INNER JOIN public_profiles p ON p.id = my.user_id
+  WHERE my.user_id = v_uid AND my.ranking_category = p_ranking_category;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_my_ranking(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_my_ranking(TEXT) TO authenticated;
+```
+
+### 返却値
+
+- 該当カテゴリで一度もプレイしていない場合: 0 行 (フロント側で null 扱い)
+- 一度でもプレイして quiz_best_scores に行がある場合: 1 行 (my_rank + プロフィール情報 + ベストスコア詳細)

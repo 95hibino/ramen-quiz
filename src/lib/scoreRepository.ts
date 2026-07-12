@@ -1,4 +1,9 @@
-import type { RankingCategory, RankingEntry, ScoreRecord } from '@/types/account';
+import type {
+  MyRankingEntry,
+  RankingCategory,
+  RankingEntry,
+  ScoreRecord,
+} from '@/types/account';
 
 /**
  * `recordScore` の入力型。
@@ -33,4 +38,14 @@ export interface ScoreRepository {
    * @param limit 最大返却件数
    */
   fetchRanking(category: RankingCategory, limit: number): Promise<RankingEntry[]>;
+
+  /**
+   * ログイン中ユーザーの、指定カテゴリでの順位を取得する。
+   *
+   * - 認証必須 (JWT 経由で auth.uid を使う)
+   * - まだ該当カテゴリでプレイしていない場合は null を返す
+   *
+   * ランキング画面で「100 位以下でも自分の順位を末尾に表示する」ために利用する。
+   */
+  fetchMyRanking(category: RankingCategory): Promise<MyRankingEntry | null>;
 }

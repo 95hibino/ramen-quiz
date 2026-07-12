@@ -17,7 +17,12 @@ import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { localAuthRepository } from '@/lib/localAuthRepository';
 import { localScoreRepository } from '@/lib/localScoreRepository';
 import type { RecordScoreInput, ScoreRepository } from '@/lib/scoreRepository';
-import type { RankingCategory, RankingEntry, ScoreRecord } from '@/types/account';
+import type {
+  MyRankingEntry,
+  RankingCategory,
+  RankingEntry,
+  ScoreRecord,
+} from '@/types/account';
 import { upsertPublicProfile } from './supabasePublicProfileRepository';
 import { supabaseScoreRepository } from './supabaseScoreRepository';
 
@@ -69,5 +74,12 @@ export const compositeScoreRepository: ScoreRepository = {
       return localScoreRepository.fetchRanking(category, limit);
     }
     return supabaseScoreRepository.fetchRanking(category, limit);
+  },
+
+  async fetchMyRanking(category: RankingCategory): Promise<MyRankingEntry | null> {
+    if (!isSupabaseConfigured()) {
+      return localScoreRepository.fetchMyRanking(category);
+    }
+    return supabaseScoreRepository.fetchMyRanking(category);
   },
 };

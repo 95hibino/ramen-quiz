@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { ScoreRepository } from '@/lib/scoreRepository';
 import { compositeScoreRepository } from '@/lib/compositeScoreRepository';
-import type { RankingCategory, RankingEntry, ScoreRecord } from '@/types/account';
+import type {
+  MyRankingEntry,
+  RankingCategory,
+  RankingEntry,
+  ScoreRecord,
+} from '@/types/account';
 import type { QuizCategory } from '@/types/quiz';
 
 export type ScoreFetchStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -13,6 +18,12 @@ interface ScoreState {
   rankingCategory: RankingCategory;
   rankingStatus: ScoreFetchStatus;
   rankingError: string | null;
+  /**
+   * ログイン中ユーザーの、選択カテゴリでの順位情報。
+   * ランキング画面で 100 位以下だった場合の末尾表示に使う。
+   * 未取得 / 該当なし (未プレイ) は null。
+   */
+  myRanking: MyRankingEntry | null;
 
   myScores: ScoreRecord[];
   myScoresStatus: ScoreFetchStatus;
@@ -38,6 +49,12 @@ interface ScoreState {
   /** 指定カテゴリの上位 limit 件のランキングを取得する。 */
   loadRanking: (category: RankingCategory, limit?: number) => Promise<void>;
 
+  /**
+   * ログイン中ユーザーの指定カテゴリでの順位を取得する。
+   * ランキング画面の loadRanking と並行して呼ぶ。
+   */
+  loadMyRanking: (category: RankingCategory) => Promise<void>;
+
   /** 指定ユーザーのスコア履歴を取得する。 */
   loadMyScores: (userId: string) => Promise<void>;
 }
@@ -51,6 +68,7 @@ export function createScoreStore(repository: ScoreRepository = compositeScoreRep
     rankingCategory: DEFAULT_RANKING_CATEGORY,
     rankingStatus: 'idle',
     rankingError: null,
+    myRanking: null,
     myScores: [],
     myScoresStatus: 'idle',
     myScoresError: null,
@@ -67,6 +85,17 @@ export function createScoreStore(repository: ScoreRepository = compositeScoreRep
       } catch (err) {
         const message = err instanceof Error ? err.message : 'ランキングの取得に失敗しました。';
         set({ rankingStatus: 'error', rankingError: message });
+      }
+    },
+
+    loadMyRanking: async (category) => {
+      // myRanking はランキング画面での付属情報。失敗しても UX を止めない (silent)。
+      try {
+        const my = await repository.fetchMyRanking(category);
+        set({ myRanking: my });
+      } catch (err) {
+        console.warn('[scoreStore] loadMyRanking failed:', err);
+        set({ myRanking: null });
       }
     },
 
