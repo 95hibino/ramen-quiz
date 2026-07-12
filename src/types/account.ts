@@ -68,13 +68,43 @@ export interface ScoreRecord {
   playedAt: string;
 }
 
-/** ランキング表示用にユーザーごとに集計した結果。 */
+/**
+ * ランキングのカテゴリ (4 種類)。
+ * - `basic` / `regional` / `expert`: 知識クイズの初級・中級・上級
+ * - `photo`: 写真当てクイズ (全プレイ共通、フィルタ条件は無視)
+ *
+ * DB 側の `quiz_best_scores.ranking_category` CHECK 制約と一致させる。
+ */
+export type RankingCategory = 'basic' | 'regional' | 'expert' | 'photo';
+
+/** UI のドロップダウンで並べる順序。 */
+export const RANKING_CATEGORIES: readonly RankingCategory[] = [
+  'basic',
+  'regional',
+  'expert',
+  'photo',
+] as const;
+
+/** ドロップダウン等で表示する日本語ラベル。 */
+export const RANKING_CATEGORY_LABELS: Record<RankingCategory, string> = {
+  basic: '知識クイズ 初級',
+  regional: '知識クイズ 中級',
+  expert: '知識クイズ 上級',
+  photo: '写真当てクイズ',
+};
+
+/** ランキング 1 行分: ユーザーごとの特定カテゴリのベストスコア。 */
 export interface RankingEntry {
   user: User;
-  /** 合計スコア。 */
-  totalScore: number;
-  /** プレイ回数。 */
-  playCount: number;
+  rankingCategory: RankingCategory;
+  /** そのカテゴリのベストスコア (pt)。 */
+  bestScore: number;
+  /** ベストを出したプレイでの正解数。 */
+  correctCount: number;
+  /** ベストを出したプレイでの問題数。 */
+  totalCount: number;
+  /** ベストスコア達成日時 (ISO8601)。同点タイブレーク (早い順が上位)。 */
+  achievedAt: string;
 }
 
 /** リポジトリ層から返される標準エラー種別。 */

@@ -1,55 +1,50 @@
 /**
  * Supabase を優先しつつ、未接続時は localScoreRepository にフォールバックする合成リポジトリ。
  *
- * 挙動:
- * - Supabase 接続中: プロフィール upsert → Supabase INSERT で恒久記録。ローカルにも同一 record を書き込み、
- *   オフライン・障害時のバックアップとする。
- * - Supabase 未接続: 従来通り localScoreRepository のみを使う (完全に localStorage 動作)。
- *
- * ランキング:
- * - Supabase 接続中: Supabase の quiz_ranking ビューから取得。失敗時は空配列。
- * - Supabase 未接続: ローカル集計。
+ * 挙動 (§14 移行後):
+ * - Supabase 接続中:
+ *   - recordScore: プロフィール upsert 安全網 → local に履歴保存 → Supabase に履歴 INSERT
+ *     + record_best_score RPC でベストスコア更新 (rankingCategory 指定時のみ)
+ *   - fetchRanking: quiz_ranking_by_category ビューから指定カテゴリの上位を取得
+ * - Supabase 未接続: 完全に localScoreRepository のみを使う (localStorage 完結、
+ *   ランキングは端末内ユーザーのみ)
  *
  * 自分のスコア履歴 (`listScoresByUser`):
- * - Supabase 接続中: サーバ (全端末合算) から取得。
- * - Supabase 未接続: ローカルから。
+ * - Supabase 接続中: サーバ (全端末合算) から取得。空なら local fallback。
+ * - Supabase 未接続: local から。
  */
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { localAuthRepository } from '@/lib/localAuthRepository';
 import { localScoreRepository } from '@/lib/localScoreRepository';
-import type { ScoreRepository } from '@/lib/scoreRepository';
-import type { RankingEntry, ScoreRecord } from '@/types/account';
+import type { RecordScoreInput, ScoreRepository } from '@/lib/scoreRepository';
+import type { RankingCategory, RankingEntry, ScoreRecord } from '@/types/account';
 import { upsertPublicProfile } from './supabasePublicProfileRepository';
 import { supabaseScoreRepository } from './supabaseScoreRepository';
 
 export const compositeScoreRepository: ScoreRepository = {
-  async recordScore(input): Promise<ScoreRecord> {
+  async recordScore(input: RecordScoreInput): Promise<ScoreRecord> {
     if (!isSupabaseConfigured()) {
       return localScoreRepository.recordScore(input);
     }
 
     // FK 制約 (quiz_scores.user_id → public_profiles.id) を満たすため、
     // Supabase INSERT の前に必ずプロフィールを upsert する。
-    // localAuthRepository からユーザー情報を引く (Phase 2 の localStorage 認証前提)。
+    // Supabase Auth 経由でサインアップ済みならプロフィールは存在するので通常 no-op。
+    // レガシー localStorage ユーザー等の救済で残している安全網。
     const user = await localAuthRepository.findUserById(input.userId);
     if (user) {
       await upsertPublicProfile(user);
     }
 
-    // Supabase INSERT。失敗時は例外を投げる (RateLimitError 含む)。
-    // 呼び出し側 (Result.tsx など) でトースト表示することで、ユーザーには
-    // 「今回はランキング反映されなかった」旨を伝える。
-    // ローカルには常に書き込むことで、マイページ (ScoreTrendChart) が
+    // ローカルにも常に書き込むことで、マイページ (ScoreTrendChart) が
     // Supabase 障害時でも空表示にならないようにする。
     const localRecord = await localScoreRepository.recordScore(input);
     try {
       const supaRecord = await supabaseScoreRepository.recordScore(input);
       return supaRecord;
     } catch (err) {
-      // ローカル書き込みは成功しているので、UI は自分のスコアは見える。
       // 例外は上に伝播させて「ランキング反映失敗」を UI で扱えるようにする。
-      // (RateLimitError もそのまま伝播)
-      // ローカル record を返さず throw することで、Result などが失敗を検知できる。
+      // ローカル書き込みは成功しているので、UI 側は自分のスコアは見える。
       throw err instanceof Error
         ? err
         : new Error(`スコア記録に失敗しました。ローカルには保存済み (${localRecord.id})`);
@@ -66,11 +61,13 @@ export const compositeScoreRepository: ScoreRepository = {
     return localScoreRepository.listScoresByUser(userId);
   },
 
-  async fetchRanking(limit: number): Promise<RankingEntry[]> {
+  async fetchRanking(
+    category: RankingCategory,
+    limit: number,
+  ): Promise<RankingEntry[]> {
     if (!isSupabaseConfigured()) {
-      return localScoreRepository.fetchRanking(limit);
+      return localScoreRepository.fetchRanking(category, limit);
     }
-    const remote = await supabaseScoreRepository.fetchRanking(limit);
-    return remote;
+    return supabaseScoreRepository.fetchRanking(category, limit);
   },
 };

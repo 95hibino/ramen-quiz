@@ -1015,3 +1015,131 @@ GRANT EXECUTE ON FUNCTION public.create_public_profile(TEXT, TEXT, TEXT) TO auth
   「原因不明の RLS violation」ではなく「明示的な未認証エラー」で早期失敗する。
 - **INSERT/UPDATE の RLS ポリシー (§11) は削除しない**。関数を経由しない直 INSERT を
   引き続き authenticated のみに限定し、詐称対策も維持される。
+
+---
+
+## §14 4 カテゴリ別ベストスコアランキング (quiz_best_scores)
+
+これまでのランキングは `quiz_scores` の SUM (総合スコア) で並べていたが、以下に変更:
+
+- **カテゴリ別ベストスコア** で並べる (プレイ回数の多い人が有利にならない)
+- **4 種類のランキング**: 知識初級 / 知識中級 / 知識上級 / 写真当て
+- **新記録が出た時だけ更新** される (updated_at で達成日時を保持)
+- **フロント UI はドロップダウン**で 4 種類を切り替え
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- ベストスコアテーブル
+-- ==========================================
+CREATE TABLE IF NOT EXISTS quiz_best_scores (
+  user_id          TEXT NOT NULL REFERENCES public_profiles(id) ON DELETE CASCADE,
+  ranking_category TEXT NOT NULL CHECK (ranking_category IN ('basic','regional','expert','photo')),
+  best_score       INTEGER NOT NULL CHECK (best_score >= 0 AND best_score <= 10000),
+  correct_count    INTEGER NOT NULL CHECK (correct_count >= 0),
+  total_count      INTEGER NOT NULL CHECK (total_count > 0 AND total_count <= 100),
+  achieved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, ranking_category),
+  CONSTRAINT correct_le_total_best CHECK (correct_count <= total_count)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_best_scores_category_score
+  ON quiz_best_scores (ranking_category, best_score DESC, achieved_at ASC);
+
+ALTER TABLE quiz_best_scores ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: 誰でも閲覧可 (ランキング表示のため)
+CREATE POLICY "public_best_scores_select" ON quiz_best_scores
+  FOR SELECT TO public USING (true);
+-- INSERT / UPDATE は RPC 関数のみを経路にする (直接クライアントからは行わない)
+
+-- ==========================================
+-- ベストスコア upsert 関数 (新記録時のみ更新)
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.record_best_score(
+  p_ranking_category TEXT,
+  p_score            INTEGER,
+  p_correct_count    INTEGER,
+  p_total_count      INTEGER
+) RETURNS quiz_best_scores
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   TEXT;
+  new_row quiz_best_scores;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  IF p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+    RAISE EXCEPTION 'invalid_ranking_category';
+  END IF;
+  IF p_score IS NULL OR p_score < 0 OR p_score > 10000 THEN
+    RAISE EXCEPTION 'invalid_score';
+  END IF;
+  IF p_correct_count IS NULL OR p_correct_count < 0 THEN
+    RAISE EXCEPTION 'invalid_correct_count';
+  END IF;
+  IF p_total_count IS NULL OR p_total_count <= 0 OR p_total_count > 100 THEN
+    RAISE EXCEPTION 'invalid_total_count';
+  END IF;
+  IF p_correct_count > p_total_count THEN
+    RAISE EXCEPTION 'correct_count exceeds total_count';
+  END IF;
+
+  -- 新スコアが既存ベストより大きい時のみ UPDATE。等しい/低い時は WHERE 句で弾く。
+  INSERT INTO quiz_best_scores (user_id, ranking_category, best_score, correct_count, total_count, achieved_at)
+  VALUES (v_uid, p_ranking_category, p_score, p_correct_count, p_total_count, NOW())
+  ON CONFLICT (user_id, ranking_category) DO UPDATE
+    SET best_score    = EXCLUDED.best_score,
+        correct_count = EXCLUDED.correct_count,
+        total_count   = EXCLUDED.total_count,
+        achieved_at   = EXCLUDED.achieved_at
+    WHERE quiz_best_scores.best_score < EXCLUDED.best_score
+  RETURNING * INTO new_row;
+
+  -- 新記録が出なかった場合、UPDATE がスキップされ new_row が NULL に。
+  -- そのときは既存のベストスコア行を返す (呼び出し側は自分のベストを常に知れる)。
+  IF new_row IS NULL THEN
+    SELECT * INTO new_row
+    FROM quiz_best_scores
+    WHERE user_id = v_uid AND ranking_category = p_ranking_category;
+  END IF;
+
+  RETURN new_row;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_best_score(TEXT, INTEGER, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_best_score(TEXT, INTEGER, INTEGER, INTEGER) TO authenticated;
+
+-- ==========================================
+-- ランキング取得ビュー (public_profiles JOIN 済み)
+-- ==========================================
+CREATE OR REPLACE VIEW quiz_ranking_by_category AS
+SELECT
+  p.id            AS user_id,
+  p.username,
+  p.prefecture,
+  p.favorite_shop,
+  bs.ranking_category,
+  bs.best_score,
+  bs.correct_count,
+  bs.total_count,
+  bs.achieved_at
+FROM quiz_best_scores bs
+INNER JOIN public_profiles p ON p.id = bs.user_id;
+```
+
+### フロント側での使い方
+
+- クイズ結果画面到達時に `record_best_score(ranking_category, score, correct, total)` を RPC で呼ぶ
+  - 通常セッション時のみ (復習セッションはランキング非対象)
+- ランキング画面は `quiz_ranking_by_category` から `ranking_category = 'xxx'` で
+  絞ってサーバ側ソート済みで取得 (`ORDER BY best_score DESC, achieved_at ASC` は
+  インデックス `idx_quiz_best_scores_category_score` を活用)

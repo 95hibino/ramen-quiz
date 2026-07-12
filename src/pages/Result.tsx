@@ -114,6 +114,12 @@ export function Result(): JSX.Element {
 
     const totalScore = answers.reduce((sum, a) => sum + a.pointsEarned, 0);
     const correctCount = answers.filter((a) => a.isCorrect).length;
+
+    // §14: ランキングカテゴリを決定 (basic/regional/expert/photo の 4 種類)。
+    // 写真クイズは filter 条件に関係なく photo 一種。知識クイズは選択カテゴリと同名。
+    const rankingCategory =
+      activeQuizType === 'photo' ? ('photo' as const) : knowledgeCategory ?? null;
+
     // Supabase 未接続時はローカルにのみ保存 (throw なし)。
     // Supabase 接続中は世界ランキング反映が失敗しても、ローカルには保存済みなので
     // マイページ表示は担保される。ここでは warn だけで UX を止めない。
@@ -125,8 +131,9 @@ export function Result(): JSX.Element {
             score: totalScore,
             correctCount,
             totalCount: questions.length,
+            rankingCategory: 'photo' as const,
           }
-        : knowledgeCategory
+        : knowledgeCategory && rankingCategory
           ? {
               userId: currentUser.id,
               category: knowledgeCategory,
@@ -134,6 +141,7 @@ export function Result(): JSX.Element {
               score: totalScore,
               correctCount,
               totalCount: questions.length,
+              rankingCategory,
             }
           : null;
     if (scoreInput) {

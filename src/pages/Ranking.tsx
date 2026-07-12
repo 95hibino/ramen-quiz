@@ -1,47 +1,93 @@
-import { useEffect } from 'react';
+import { useEffect, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useScoreStore } from '@/stores/scoreStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
 import { buildSiteUrl } from '@/config/site';
+import {
+  RANKING_CATEGORIES,
+  RANKING_CATEGORY_LABELS,
+  type RankingCategory,
+} from '@/types/account';
 
 const RANKING_LIMIT = 100;
 
 /**
- * ランキングページ。
- * 表示項目: 順位 / ユーザー名 / 都道府県 / 好きなラーメン店 / 合計スコア / プレイ回数。
+ * ランキングページ (§14 ベストスコア方式)。
+ *
+ * 4 種類のランキングカテゴリ (初級/中級/上級/写真当て) をドロップダウンで切り替える。
+ * 各ランキングはユーザーごとの「そのカテゴリのベストスコア」で並び、
+ * タイブレークは達成日時が早い方が上位。
+ *
+ * 表示項目: 順位 / ユーザー名 / 都道府県 / 好きなラーメン店 / ベストスコア / 正解 / 達成日
  */
 export function Ranking(): JSX.Element {
   const ranking = useScoreStore((s) => s.ranking);
+  const rankingCategory = useScoreStore((s) => s.rankingCategory);
   const rankingStatus = useScoreStore((s) => s.rankingStatus);
   const rankingError = useScoreStore((s) => s.rankingError);
   const loadRanking = useScoreStore((s) => s.loadRanking);
   const currentUser = useAuthStore((s) => s.currentUser);
 
   useEffect(() => {
-    void loadRanking(RANKING_LIMIT);
-  }, [loadRanking]);
+    void loadRanking(rankingCategory, RANKING_LIMIT);
+  }, [loadRanking, rankingCategory]);
+
+  const handleCategoryChange = (e: ChangeEvent<HTMLSelectElement>): void => {
+    const value = e.target.value as RankingCategory;
+    if (!RANKING_CATEGORIES.includes(value)) return;
+    void loadRanking(value, RANKING_LIMIT);
+  };
 
   const shareUrl = buildSiteUrl('/ranking');
-  const shareText =
-    '🍜 ラーメンクイズランキングをチェック！\n上位を狙ってラーメン知識で挑戦しよう！';
+  const shareText = `🍜 ラーメンクイズ「${RANKING_CATEGORY_LABELS[rankingCategory]}」ランキングをチェック！\n上位を狙ってラーメン知識で挑戦しよう！`;
 
   return (
     <div className="space-y-6">
       <Seo
-        title="ランキング"
-        description="ラーメンクイズのランキング。全プレイヤーの累計スコアと順位を表示。あなたの順位は？上位を目指して挑戦しよう。"
+        title={`ランキング (${RANKING_CATEGORY_LABELS[rankingCategory]})`}
+        description={`ラーメンクイズ ${RANKING_CATEGORY_LABELS[rankingCategory]} のランキング。全プレイヤーのベストスコアと順位を表示。あなたの順位は？`}
         url="/ranking"
-        keywords={['ラーメンクイズ', 'ランキング', 'クイズスコア', 'ラーメン愛好家']}
+        keywords={[
+          'ラーメンクイズ',
+          'ランキング',
+          RANKING_CATEGORY_LABELS[rankingCategory],
+          'クイズスコア',
+          'ラーメン愛好家',
+        ]}
       />
-      <div className="card">
-        <h1 className="text-2xl font-black text-ramen-soy">ランキング (上位 {RANKING_LIMIT} 名)</h1>
-        <p className="mt-2 text-sm text-ramen-soy/70">
-          全プレイヤーの累計スコアで順位を表示します。同点の場合はプレイ回数の少ない方が上位です。
+      <div className="card space-y-4">
+        <h1 className="text-2xl font-black text-ramen-soy">ランキング</h1>
+
+        {/* ドロップダウン: 4 種類のランキングカテゴリを切替 */}
+        <div className="flex flex-wrap items-center gap-3">
+          <label
+            htmlFor="ranking-category"
+            className="text-sm font-bold text-ramen-soy"
+          >
+            カテゴリ
+          </label>
+          <select
+            id="ranking-category"
+            value={rankingCategory}
+            onChange={handleCategoryChange}
+            className="input max-w-xs"
+          >
+            {RANKING_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {RANKING_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <p className="text-sm text-ramen-soy/70">
+          各ユーザーの「{RANKING_CATEGORY_LABELS[rankingCategory]}」でのベストスコアで並びます。
+          新記録を出した時だけ順位が更新され、同点は達成日時が早い方が上位です。
         </p>
         {!currentUser ? (
-          <p className="mt-3 text-xs text-ramen-soy/70">
+          <p className="text-xs text-ramen-soy/70">
             ランキングに参加するには{' '}
             <Link to="/signup" className="font-bold text-ramen-chili hover:underline">
               アカウントを作成
@@ -49,8 +95,10 @@ export function Ranking(): JSX.Element {
             してください。
           </p>
         ) : null}
-        <div className="mt-4 border-t border-ramen-soy/10 pt-4">
-          <p className="mb-3 text-xs font-bold text-ramen-soy/70">サイトをシェアする</p>
+        <div className="border-t border-ramen-soy/10 pt-4">
+          <p className="mb-3 text-xs font-bold text-ramen-soy/70">
+            このランキングをシェアする
+          </p>
           <ShareButtons
             text={shareText}
             url={shareUrl}
@@ -72,7 +120,8 @@ export function Ranking(): JSX.Element {
 
       {rankingStatus === 'success' && ranking.length === 0 ? (
         <p className="card text-center text-ramen-soy/70">
-          まだスコアの記録がありません。クイズを 1 回プレイしてランキング 1 位を狙いましょう!
+          このカテゴリではまだベストスコアの記録がありません。<br />
+          最初のプレイヤーになって 1 位を狙いましょう!
         </p>
       ) : null}
 
@@ -85,8 +134,15 @@ export function Ranking(): JSX.Element {
                 <th className="px-2 py-3 font-bold text-ramen-soy">ユーザー名</th>
                 <th className="px-2 py-3 font-bold text-ramen-soy">都道府県</th>
                 <th className="px-2 py-3 font-bold text-ramen-soy">好きな店</th>
-                <th className="px-2 py-3 text-right font-bold text-ramen-soy">合計スコア</th>
-                <th className="px-2 py-3 text-right font-bold text-ramen-soy">プレイ回数</th>
+                <th className="px-2 py-3 text-right font-bold text-ramen-soy">
+                  ベスト
+                </th>
+                <th className="px-2 py-3 text-right font-bold text-ramen-soy">
+                  正解
+                </th>
+                <th className="px-2 py-3 text-right font-bold text-ramen-soy">
+                  達成日
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -104,12 +160,25 @@ export function Ranking(): JSX.Element {
                     </td>
                     <td className="px-2 py-2 text-ramen-soy">
                       {entry.user.username}
-                      {isMe ? <span className="ml-1 text-xs text-ramen-chili">(あなた)</span> : null}
+                      {isMe ? (
+                        <span className="ml-1 text-xs text-ramen-chili">(あなた)</span>
+                      ) : null}
                     </td>
-                    <td className="px-2 py-2 text-ramen-soy/80">{entry.user.prefecture}</td>
-                    <td className="px-2 py-2 text-ramen-soy/80">{entry.user.favoriteShop}</td>
-                    <td className="px-2 py-2 text-right text-ramen-chili">{entry.totalScore} pt</td>
-                    <td className="px-2 py-2 text-right text-ramen-soy/80">{entry.playCount}</td>
+                    <td className="px-2 py-2 text-ramen-soy/80">
+                      {entry.user.prefecture}
+                    </td>
+                    <td className="px-2 py-2 text-ramen-soy/80">
+                      {entry.user.favoriteShop}
+                    </td>
+                    <td className="px-2 py-2 text-right text-ramen-chili">
+                      {entry.bestScore} pt
+                    </td>
+                    <td className="px-2 py-2 text-right text-ramen-soy/80">
+                      {entry.correctCount} / {entry.totalCount}
+                    </td>
+                    <td className="px-2 py-2 text-right text-xs text-ramen-soy/70">
+                      {formatDate(entry.achievedAt)}
+                    </td>
                   </tr>
                 );
               })}
@@ -126,4 +195,16 @@ function RankBadge({ rank }: { rank: number }): JSX.Element {
   if (rank === 2) return <span className="text-lg">🥈</span>;
   if (rank === 3) return <span className="text-lg">🥉</span>;
   return <span className="text-ramen-soy">{rank}</span>;
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
 }

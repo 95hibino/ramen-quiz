@@ -24,8 +24,14 @@ export const PUBLIC_PROFILES_TABLE = 'public_profiles';
 /** クイズスコアテーブル名 (1 プレイ = 1 行)。 */
 export const QUIZ_SCORES_TABLE = 'quiz_scores';
 
-/** ランキング集計ビュー名 (public_profiles LEFT JOIN quiz_scores の GROUP BY)。 */
+/** 【legacy】 §10 の SUM ベースランキングビュー。§14 移行後は未使用。 */
 export const QUIZ_RANKING_VIEW = 'quiz_ranking';
+
+/** カテゴリ別ベストスコアランキングビュー (§14)。 */
+export const QUIZ_RANKING_BY_CATEGORY_VIEW = 'quiz_ranking_by_category';
+
+/** カテゴリ別ベストスコアテーブル名 (§14)。 */
+export const QUIZ_BEST_SCORES_TABLE = 'quiz_best_scores';
 
 let cachedClient: SupabaseClient | null | undefined;
 

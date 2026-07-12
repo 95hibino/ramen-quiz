@@ -1,9 +1,11 @@
 /**
  * Supabase 実装の ScoreRepository。
  *
- * - `recordScore`: プロフィール upsert → quiz_scores に INSERT
- * - `listScoresByUser`: user_id で絞って新しい順
- * - `fetchRanking`: quiz_ranking ビュー (public_profiles LEFT JOIN quiz_scores) を SELECT
+ * §14 移行後の役割:
+ * - `recordScore`: `quiz_scores` に INSERT (プレイ履歴) + `record_best_score` RPC
+ *   (ベストスコア更新、rankingCategory が指定されたときのみ)
+ * - `listScoresByUser`: `quiz_scores` を user_id で絞って新しい順 (マイページ用)
+ * - `fetchRanking`: `quiz_ranking_by_category` ビューから指定カテゴリ分を取得
  *
  * Supabase 未接続時は空データを返し、`compositeScoreRepository` 側で
  * localScoreRepository にフォールバックする。
@@ -13,15 +15,20 @@
  * `RateLimitError` は写真投稿と同じ形式でフロントに伝える。
  */
 import { generateId } from '@/lib/storage';
-import type { ScoreRepository } from '@/lib/scoreRepository';
-import type { RankingEntry, ScoreRecord, User } from '@/types/account';
+import type { RecordScoreInput, ScoreRepository } from '@/lib/scoreRepository';
+import type {
+  RankingCategory,
+  RankingEntry,
+  ScoreRecord,
+  User,
+} from '@/types/account';
 import { isValidPrefecture, type Prefecture } from '@/data/prefectures';
 import type { QuizCategory } from '@/types/quiz';
 import { RateLimitError } from './supabasePhotoQuestionRepository';
 import { upsertPublicProfile } from './supabasePublicProfileRepository';
 import {
   getSupabaseClient,
-  QUIZ_RANKING_VIEW,
+  QUIZ_RANKING_BY_CATEGORY_VIEW,
   QUIZ_SCORES_TABLE,
 } from './supabaseClient';
 
@@ -37,19 +44,27 @@ interface QuizScoreRow {
   played_at: string;
 }
 
-/** DB 行 (quiz_ranking view) → RankingEntry のマッピング用。 */
-interface RankingRow {
+/** DB 行 (quiz_ranking_by_category view) → RankingEntry のマッピング用。 */
+interface RankingByCategoryRow {
   user_id: string;
   username: string;
   prefecture: string;
   favorite_shop: string;
-  created_at: string;
-  total_score: number;
-  play_count: number;
+  ranking_category: string;
+  best_score: number;
+  correct_count: number;
+  total_count: number;
+  achieved_at: string;
 }
 
 const VALID_QUIZ_TYPES = new Set(['knowledge', 'photo']);
 const VALID_CATEGORIES = new Set<QuizCategory>(['basic', 'regional', 'expert']);
+const VALID_RANKING_CATEGORIES = new Set<RankingCategory>([
+  'basic',
+  'regional',
+  'expert',
+  'photo',
+]);
 
 function parseCategory(value: string | null): QuizCategory | undefined {
   if (!value) return undefined;
@@ -70,19 +85,24 @@ function rowToScoreRecord(row: QuizScoreRow): ScoreRecord | null {
   };
 }
 
-function rowToRankingEntry(row: RankingRow): RankingEntry | null {
+function rowToRankingEntry(row: RankingByCategoryRow): RankingEntry | null {
   if (!isValidPrefecture(row.prefecture)) return null;
+  if (!VALID_RANKING_CATEGORIES.has(row.ranking_category as RankingCategory)) return null;
   const user: User = {
     id: row.user_id,
     username: row.username,
     prefecture: row.prefecture as Prefecture,
     favoriteShop: row.favorite_shop,
-    createdAt: row.created_at,
+    // view には created_at を含めていないため、達成日時で代用 (UI 上表示しない情報)
+    createdAt: row.achieved_at,
   };
   return {
     user,
-    totalScore: row.total_score,
-    playCount: row.play_count,
+    rankingCategory: row.ranking_category as RankingCategory,
+    bestScore: row.best_score,
+    correctCount: row.correct_count,
+    totalCount: row.total_count,
+    achievedAt: row.achieved_at,
   };
 }
 
@@ -97,21 +117,22 @@ function parseRateLimitMessage(message: string | undefined | null): number | nul
 }
 
 export const supabaseScoreRepository: ScoreRepository = {
-  async recordScore(input): Promise<ScoreRecord> {
+  async recordScore(input: RecordScoreInput): Promise<ScoreRecord> {
     const client = getSupabaseClient();
     if (!client) {
       throw new Error('Supabase が未接続のためスコアを記録できません。');
     }
 
-    // FK 制約 (user_id → public_profiles) を満たすため、記録前に必ずプロフィールが
-    // 存在することを保証する。呼び出し側 (compositeScoreRepository) がユーザー情報を
-    // 事前に渡していない場合、localAuthRepository から補完する。
-    // ここでは呼び出し元が upsert 済みの想定で INSERT のみ行う (安全網は composite 側)。
-
+    // 1) quiz_scores に履歴として INSERT (マイページのプレイ履歴・スコア推移用)
     const record: ScoreRecord = {
       id: generateId(),
       playedAt: new Date().toISOString(),
-      ...input,
+      userId: input.userId,
+      quizType: input.quizType,
+      category: input.category,
+      score: input.score,
+      correctCount: input.correctCount,
+      totalCount: input.totalCount,
     };
 
     const payload = {
@@ -136,6 +157,27 @@ export const supabaseScoreRepository: ScoreRepository = {
       }
       throw new Error(`スコア記録に失敗しました: ${error.message}`);
     }
+
+    // 2) rankingCategory が指定されていればベストスコアを更新 (§14 RPC)。
+    //    新記録のときのみサーバ側で UPDATE される。復習セッションなどでは
+    //    rankingCategory を渡さずに呼ぶことでランキングへの反映を抑止できる。
+    if (input.rankingCategory) {
+      const { error: rpcError } = await client.rpc('record_best_score', {
+        p_ranking_category: input.rankingCategory,
+        p_score: input.score,
+        p_correct_count: input.correctCount,
+        p_total_count: input.totalCount,
+      });
+      if (rpcError) {
+        // ベストスコア更新の失敗はプレイ履歴 (quiz_scores) 保存は成功しているため、
+        // ユーザー体験を止めない。warn だけ残す。
+        console.warn(
+          '[supabaseScoreRepository] record_best_score RPC failed:',
+          rpcError.message,
+        );
+      }
+    }
+
     return record;
   },
 
@@ -160,19 +202,26 @@ export const supabaseScoreRepository: ScoreRepository = {
     return result;
   },
 
-  async fetchRanking(limit: number): Promise<RankingEntry[]> {
+  async fetchRanking(
+    category: RankingCategory,
+    limit: number,
+  ): Promise<RankingEntry[]> {
     const client = getSupabaseClient();
     if (!client) return [];
-    // quiz_ranking view はサーバ側で totalScore DESC, playCount ASC の順序を保証する。
+    // quiz_ranking_by_category ビューをカテゴリで絞り、
+    // インデックス (ranking_category, best_score DESC, achieved_at ASC) を活用してソート。
     const { data, error } = await client
-      .from(QUIZ_RANKING_VIEW)
+      .from(QUIZ_RANKING_BY_CATEGORY_VIEW)
       .select('*')
+      .eq('ranking_category', category)
+      .order('best_score', { ascending: false })
+      .order('achieved_at', { ascending: true })
       .limit(limit);
     if (error) {
       console.warn('[supabaseScoreRepository] fetchRanking failed:', error.message);
       return [];
     }
-    const rows = (data ?? []) as RankingRow[];
+    const rows = (data ?? []) as RankingByCategoryRow[];
     const result: RankingEntry[] = [];
     for (const row of rows) {
       const entry = rowToRankingEntry(row);
@@ -188,9 +237,8 @@ export const supabaseScoreRepository: ScoreRepository = {
  */
 export async function recordScoreWithProfile(
   user: User,
-  input: Omit<ScoreRecord, 'id' | 'playedAt'>,
+  input: RecordScoreInput,
 ): Promise<ScoreRecord> {
   await upsertPublicProfile(user);
   return supabaseScoreRepository.recordScore(input);
 }
-
