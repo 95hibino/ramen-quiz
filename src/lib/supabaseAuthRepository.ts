@@ -182,23 +182,26 @@ function clearPendingProfile(): void {
 }
 
 /**
- * 与えられた User 情報を public_profiles に upsert する。エラーがあれば投げる。
+ * 与えられた User 情報を public_profiles に upsert する。
+ * SECURITY DEFINER 関数 `create_public_profile` を経由することで:
+ * - id はサーバ側の auth.uid() から確定 → クライアントとの id ずれが原理的に起きない
+ * - RLS を関数内で bypass → INSERT が RLS race で失敗しない
+ * - 未認証時は関数側で `not_authenticated` エラーが返り、原因が明示される
+ *
  * signup 時と login 時の自己修復時の両方から使う。
+ * 詳細: docs/SUPABASE_SETUP.md §13。
  */
 async function upsertProfileRow(user: User): Promise<void> {
   const client = requireClient();
-  const { error } = await client
-    .from(PUBLIC_PROFILES_TABLE)
-    .upsert(
-      {
-        id: user.id,
-        username: user.username,
-        prefecture: user.prefecture,
-        favorite_shop: user.favoriteShop,
-      },
-      { onConflict: 'id' },
-    );
+  const { error } = await client.rpc('create_public_profile', {
+    p_username: user.username,
+    p_prefecture: user.prefecture,
+    p_favorite_shop: user.favoriteShop,
+  });
   if (error) {
+    // Postgres の関数側で投げた RAISE EXCEPTION は error.message に文言が入る。
+    // 'not_authenticated' なら JWT が届いていない (通常はコード側で防止済み)。
+    // 'invalid_*' ならバリデーション違反 (フロント側で捕捉済みのはず)。
     throw new AuthError(
       'unknown',
       `プロフィール保存に失敗しました: ${error.message}`,
@@ -234,6 +237,15 @@ export const supabaseAuthRepository: AuthRepository = {
     // ここで失敗しても signup は続行、次回 login 時にリカバリ可能。
     savePendingProfile({ username, prefecture: input.prefecture, favoriteShop });
 
+    // 【前準備】 既存の (別ユーザーの) セッションが残っていると、signup 直後の RPC で
+    // 「古い JWT」が付いて auth.uid() がずれる race が起きる。事前に signOut して
+    // 完全にクリーンな状態から signUp を始める。
+    try {
+      await client.auth.signOut({ scope: 'local' });
+    } catch (err) {
+      console.warn('[supabaseAuthRepository] signOut before signup failed (無視して続行):', err);
+    }
+
     // Supabase Auth 側にユーザー作成。
     // Email confirmation は Supabase ダッシュボードで OFF にしておくこと (SUPABASE_SETUP.md §11)。
     const { data: signUpData, error: signUpError } = await client.auth.signUp({
@@ -245,10 +257,10 @@ export const supabaseAuthRepository: AuthRepository = {
     }
 
     // 【重要】 signUp 直後は Supabase JS の内部 PostgrestClient のトークンキャッシュに
-    // 新セッションが伝播していないことがあり、続く upsert が anon 扱いで RLS で弾かれる
-    // race condition が発生する。これを回避するため、必ず signInWithPassword を明示的に
-    // 呼んでセッションを確定させる。Confirm email が ON の場合はここで失敗する
-    // (未確認メールへのサインインは Supabase 側で拒否される)。
+    // 新セッションが伝播していないことがあり、続く RPC が RLS/認証コンテキストで
+    // 期待通りに動かない race condition が発生する。これを回避するため、必ず
+    // signInWithPassword を明示的に呼んでセッションを確定させる。Confirm email が ON の
+    // 場合はここで失敗する (未確認メールへのサインインは Supabase 側で拒否される)。
     const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
       email,
       password: input.password,
@@ -260,12 +272,26 @@ export const supabaseAuthRepository: AuthRepository = {
       );
     }
 
-    // 更に念のため getSession を呼び、内部トークンキャッシュを明示的に最新化する。
-    // これで続く upsert は必ず新セッションの JWT を Authorization ヘッダに載せる。
-    await client.auth.getSession();
+    // 【重要 2】 signInWithPassword が返した token を setSession で明示的に注入する。
+    // これで内部の PostgrestClient のトークンキャッシュも確実に上書きされ、
+    // 続く RPC 呼び出しに正しい JWT が Authorization ヘッダで載る。
+    await client.auth.setSession({
+      access_token: signInData.session.access_token,
+      refresh_token: signInData.session.refresh_token,
+    });
 
-    // public_profiles に upsert。id は auth.uid() と一致する。
-    // signUpData.user.id と signInData.user.id は同じだが、セッション確定後の signInData 側を採用。
+    // 【検証】 セッションが本当に期待通りのユーザーになっているか確認する。
+    // getUser は API 呼び出しなので、JWT がサーバに届いていることも同時にテストできる。
+    const { data: userCheck, error: userCheckError } = await client.auth.getUser();
+    if (userCheckError || !userCheck.user || userCheck.user.id !== signInData.user.id) {
+      throw new AuthError(
+        'unknown',
+        `セッション検証に失敗しました${userCheckError ? ` (${userCheckError.message})` : ''}。ページをリロードしてもう一度お試しください。`,
+      );
+    }
+
+    // public_profiles に upsert (SECURITY DEFINER 関数経由。docs/SUPABASE_SETUP.md §13)。
+    // id はサーバ側で auth.uid() から確定するので、client 側の id は使わない。
     const newProfile: User = {
       id: signInData.user.id,
       username,

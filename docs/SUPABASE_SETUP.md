@@ -936,3 +936,82 @@ CREATE POLICY "public_scores_select" ON quiz_scores
 (anon + authenticated + service_role 等)。ランキング画面は誰でも見えるべきなので、
 SELECT のみ全開放が適切です。INSERT/UPDATE は §11 の厳格ポリシー
 (`auth.uid()::text = id/user_id`) が引き続き有効なので詐称は防がれます。
+
+---
+
+## §13 SECURITY DEFINER 関数によるプロフィール作成 (RLS race condition 対策)
+
+Supabase JS の signUp/signInWithPassword 完了直後、内部のトークンキャッシュに
+新セッションが完全に反映される前に PostgREST への upsert リクエストが発生すると、
+JWT が中途半端に付与された状態で INSERT され、RLS の
+`WITH CHECK (auth.uid()::text = id)` が失敗する race condition が発生する。
+
+これを回避するため、**サーバ側関数**内で `auth.uid()` を直接使って
+INSERT する方式に切り替える。関数は SECURITY DEFINER で作成し、RLS を bypass する。
+呼び出し側 (フロント) は関数に profile 情報だけを渡し、id はサーバが決める。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+CREATE OR REPLACE FUNCTION public.create_public_profile(
+  p_username TEXT,
+  p_prefecture TEXT,
+  p_favorite_shop TEXT
+) RETURNS public_profiles
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid TEXT;
+  new_row public_profiles;
+BEGIN
+  -- JWT から呼び出し元の user id を取得。未認証ならエラー。
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  -- 引数バリデーション (フロント側と多重防御)
+  IF p_username IS NULL OR char_length(trim(p_username)) < 1 OR char_length(p_username) > 40 THEN
+    RAISE EXCEPTION 'invalid_username: length must be 1-40';
+  END IF;
+  IF p_prefecture IS NULL OR char_length(p_prefecture) < 2 OR char_length(p_prefecture) > 8 THEN
+    RAISE EXCEPTION 'invalid_prefecture: length must be 2-8';
+  END IF;
+  IF p_favorite_shop IS NULL
+     OR char_length(trim(p_favorite_shop)) < 1
+     OR char_length(p_favorite_shop) > 100 THEN
+    RAISE EXCEPTION 'invalid_favorite_shop: length must be 1-100';
+  END IF;
+
+  -- auth.uid() を id に使って upsert。SECURITY DEFINER なので RLS bypass。
+  INSERT INTO public_profiles (id, username, prefecture, favorite_shop)
+  VALUES (v_uid, trim(p_username), p_prefecture, trim(p_favorite_shop))
+  ON CONFLICT (id) DO UPDATE
+    SET username = EXCLUDED.username,
+        prefecture = EXCLUDED.prefecture,
+        favorite_shop = EXCLUDED.favorite_shop,
+        updated_at = NOW()
+  RETURNING * INTO new_row;
+
+  RETURN new_row;
+END;
+$$;
+
+-- デフォルトで PUBLIC (全ロール) に EXECUTE 権が付くのを剥がし、
+-- authenticated (ログイン中ユーザー) のみに絞る。
+REVOKE ALL ON FUNCTION public.create_public_profile(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.create_public_profile(TEXT, TEXT, TEXT) TO authenticated;
+```
+
+### なぜこれで race を防げるか
+
+- **id はサーバ側で `auth.uid()` から確定**されるので、クライアントから id を渡さない。
+  つまり「クライアントが持つ id とサーバが認識する auth.uid() がずれる」問題が起きない。
+- **SECURITY DEFINER なので INSERT が RLS を通過**する必要がなくなる (関数の owner 権限で INSERT)。
+  RLS ポリシー §11 は残しつつ、正規のプロフィール作成はこの関数だけを経路にする。
+- **JWT が未付与なら関数の最初で `not_authenticated` を投げる**ので、
+  「原因不明の RLS violation」ではなく「明示的な未認証エラー」で早期失敗する。
+- **INSERT/UPDATE の RLS ポリシー (§11) は削除しない**。関数を経由しない直 INSERT を
+  引き続き authenticated のみに限定し、詐称対策も維持される。

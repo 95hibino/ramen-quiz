@@ -6,7 +6,6 @@ import { restoreCurrentUser, supabaseLogout } from '@/lib/supabaseAuthRepository
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import type { LoginInput, SignupInput, User } from '@/types/account';
 import { STORAGE_KEYS } from '@/lib/storage';
-import { upsertPublicProfile } from '@/lib/supabasePublicProfileRepository';
 
 export type AuthStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -51,11 +50,11 @@ export function createAuthStore(repository: AuthRepository = compositeAuthReposi
         signup: async (input) => {
           set({ status: 'loading', errorMessage: null });
           try {
+            // supabaseAuthRepository.signup が SECURITY DEFINER 関数 (§13) 経由で
+            // 確実に public_profiles に upsert する。localAuthRepository 経路 (Supabase
+            // 未接続時) は localStorage 完結なので upsert 不要。
+            // → authStore 側での重複 upsert (以前は冗長に呼んでいた) を削除。
             const user = await repository.signup(input);
-            // Supabase Auth 実装では supabaseAuthRepository.signup 内で既に
-            // upsert 済みだが、composite の localAuthRepository 経路でも
-            // Supabase 接続中なら upsert を行うために呼ぶ (冪等)。
-            void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
           } catch (err) {
@@ -68,8 +67,9 @@ export function createAuthStore(repository: AuthRepository = compositeAuthReposi
         login: async (input) => {
           set({ status: 'loading', errorMessage: null });
           try {
+            // login 時の profile upsert は supabaseAuthRepository.login の
+            // 自己修復ロジック内で必要時のみ実行される。
             const user = await repository.login(input);
-            void upsertPublicProfile(user);
             set({ currentUser: user, status: 'success', errorMessage: null });
             return user;
           } catch (err) {
