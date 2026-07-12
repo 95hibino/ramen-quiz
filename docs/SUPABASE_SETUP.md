@@ -899,3 +899,40 @@ await client.from('quiz_scores').insert({
 - ✅ 誰も見張っていない裏口 INSERT
 - ⚠️ 一方で「自分自身の user_id でボットが繰り返しプレイ」は防げない
   (これは §10 のレート制限トリガーがカバー、必要なら Turnstile 等を追加)
+
+---
+
+## §12 SELECT ポリシー修正 (Phase 3 デプロイ後の必須パッチ)
+
+§10 で作った SELECT ポリシーは `TO anon` に限定されており、Phase G で全ユーザーが
+`authenticated` ロールになった後は SELECT が全て弾かれてランキングが空表示になる問題があります。
+
+**症状**:
+- ログイン後に `/ranking` を開くと「まだスコアの記録がありません」と表示され、
+  Supabase Dashboard 上では `public_profiles` / `quiz_scores` に行があるのに反映されない
+- ブラウザの Network タブで `quiz_ranking` の SELECT が空配列を返している
+- Supabase の Logs で `permission denied` は出ないが、RLS でフィルタされて 0 件になっている
+
+**修正 SQL** (SQL Editor で 1 度だけ実行):
+
+```sql
+-- ==========================================
+-- §12 patch: SELECT を authenticated ユーザーにも許可
+-- ==========================================
+-- Postgres RLS では anon と authenticated は別ロールで、
+-- TO anon ポリシーは authenticated ユーザーには適用されない。
+-- INSERT/UPDATE の詐称対策 (auth.uid() = user_id) は §11 のまま維持。
+DROP POLICY IF EXISTS "anon_profiles_select" ON public_profiles;
+DROP POLICY IF EXISTS "anon_scores_select" ON quiz_scores;
+
+CREATE POLICY "public_profiles_select" ON public_profiles
+  FOR SELECT TO public USING (true);
+
+CREATE POLICY "public_scores_select" ON quiz_scores
+  FOR SELECT TO public USING (true);
+```
+
+`TO public` は Postgres の擬似ロールで「全てのロール」を意味します
+(anon + authenticated + service_role 等)。ランキング画面は誰でも見えるべきなので、
+SELECT のみ全開放が適切です。INSERT/UPDATE は §11 の厳格ポリシー
+(`auth.uid()::text = id/user_id`) が引き続き有効なので詐称は防がれます。
