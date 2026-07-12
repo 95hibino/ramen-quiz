@@ -244,25 +244,30 @@ export const supabaseAuthRepository: AuthRepository = {
       throw toAuthError(signUpError, 'アカウント作成に失敗しました。');
     }
 
-    // 【重要】 Confirm email が OFF なら signUp が session を返してくれる。
-    // ON のままだと session が null → 続く upsert は anon 扱いで RLS で弾かれる。
-    // その場合は明示的に signInWithPassword を試み、それでもダメなら明示エラーを投げる。
-    if (!signUpData.session) {
-      const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-        email,
-        password: input.password,
-      });
-      if (signInError || !signInData.session) {
-        throw new AuthError(
-          'unknown',
-          'アカウント作成の初期化に失敗しました。Supabase Dashboard で「Confirm email」を OFF にしてください (docs/SUPABASE_SETUP.md §11 参照)。',
-        );
-      }
+    // 【重要】 signUp 直後は Supabase JS の内部 PostgrestClient のトークンキャッシュに
+    // 新セッションが伝播していないことがあり、続く upsert が anon 扱いで RLS で弾かれる
+    // race condition が発生する。これを回避するため、必ず signInWithPassword を明示的に
+    // 呼んでセッションを確定させる。Confirm email が ON の場合はここで失敗する
+    // (未確認メールへのサインインは Supabase 側で拒否される)。
+    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+      email,
+      password: input.password,
+    });
+    if (signInError || !signInData.session || !signInData.user) {
+      throw new AuthError(
+        'unknown',
+        `アカウント作成後の自動サインインに失敗しました${signInError ? ` (${signInError.message})` : ''}。Supabase Dashboard で「Confirm email」を OFF にしてください (docs/SUPABASE_SETUP.md §11 参照)。`,
+      );
     }
 
+    // 更に念のため getSession を呼び、内部トークンキャッシュを明示的に最新化する。
+    // これで続く upsert は必ず新セッションの JWT を Authorization ヘッダに載せる。
+    await client.auth.getSession();
+
     // public_profiles に upsert。id は auth.uid() と一致する。
+    // signUpData.user.id と signInData.user.id は同じだが、セッション確定後の signInData 側を採用。
     const newProfile: User = {
-      id: signUpData.user.id,
+      id: signInData.user.id,
       username,
       prefecture: input.prefecture,
       favoriteShop,
