@@ -1138,8 +1138,98 @@ INNER JOIN public_profiles p ON p.id = bs.user_id;
 
 ### フロント側での使い方
 
-- クイズ結果画面到達時に `record_best_score(ranking_category, score, correct, total)` を RPC で呼ぶ
-  - 通常セッション時のみ (復習セッションはランキング非対象)
+- クイズ結果画面到達時に `record_quiz_score(...)` RPC (§15) を呼ぶ
 - ランキング画面は `quiz_ranking_by_category` から `ranking_category = 'xxx'` で
   絞ってサーバ側ソート済みで取得 (`ORDER BY best_score DESC, achieved_at ASC` は
   インデックス `idx_quiz_best_scores_category_score` を活用)
+
+---
+
+## §15 スコア記録 RPC (§13 と同じ RLS race 対策)
+
+`quiz_scores` への直 INSERT は §11 の RLS `WITH CHECK (auth.uid()::text = user_id)`
+を通過する必要があるが、public_profiles と同様に JWT の伝播タイミング race で
+INSERT が RLS で弾かれる問題が発生する。
+
+そのため、プレイ履歴とベストスコア更新をまとめて行う SECURITY DEFINER 関数
+`record_quiz_score` を作成し、クライアントは常にこの関数を経由して記録する。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+CREATE OR REPLACE FUNCTION public.record_quiz_score(
+  p_quiz_type        TEXT,
+  p_category         TEXT,      -- NULL for photo quiz
+  p_score            INTEGER,
+  p_correct_count    INTEGER,
+  p_total_count      INTEGER,
+  p_ranking_category TEXT       -- NULL でランキング更新スキップ (復習セッション等)
+) RETURNS TEXT                  -- 挿入した quiz_scores.id を返す
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid       TEXT;
+  v_score_id  TEXT;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  -- validation (フロント側と多重防御)
+  IF p_quiz_type NOT IN ('knowledge','photo') THEN
+    RAISE EXCEPTION 'invalid_quiz_type';
+  END IF;
+  IF p_category IS NOT NULL AND p_category NOT IN ('basic','regional','expert') THEN
+    RAISE EXCEPTION 'invalid_category';
+  END IF;
+  IF p_score IS NULL OR p_score < 0 OR p_score > 100000 THEN
+    RAISE EXCEPTION 'invalid_score';
+  END IF;
+  IF p_correct_count IS NULL OR p_correct_count < 0 THEN
+    RAISE EXCEPTION 'invalid_correct_count';
+  END IF;
+  IF p_total_count IS NULL OR p_total_count <= 0 OR p_total_count > 100 THEN
+    RAISE EXCEPTION 'invalid_total_count';
+  END IF;
+  IF p_correct_count > p_total_count THEN
+    RAISE EXCEPTION 'correct_count exceeds total_count';
+  END IF;
+  IF p_ranking_category IS NOT NULL
+     AND p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+    RAISE EXCEPTION 'invalid_ranking_category';
+  END IF;
+
+  -- 1) プレイ履歴を quiz_scores に INSERT (rate limit トリガーが発火する)
+  v_score_id := gen_random_uuid()::text;
+  INSERT INTO quiz_scores (
+    id, user_id, quiz_type, category, score, correct_count, total_count, played_at
+  )
+  VALUES (
+    v_score_id, v_uid, p_quiz_type, p_category, p_score, p_correct_count, p_total_count, NOW()
+  );
+
+  -- 2) rankingCategory 指定時はベストスコアも更新 (新記録時のみ更新)
+  IF p_ranking_category IS NOT NULL THEN
+    PERFORM public.record_best_score(
+      p_ranking_category, p_score, p_correct_count, p_total_count
+    );
+  END IF;
+
+  RETURN v_score_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) TO authenticated;
+```
+
+### 効果
+
+- クライアントから見ると 1 回の RPC で「プレイ履歴保存 + ベストスコア更新」が完結
+- INSERT は SECURITY DEFINER なので RLS を bypass → race condition が原理的に発生しない
+- JWT 未付与時は `not_authenticated` で明示的に失敗 → 原因が特定できる
+- レート制限トリガー (`enforce_quiz_score_rate_limit`) は引き続き作動 (Bot 対策維持)
+- §11 の RLS ポリシー (直 INSERT 用) は残しつつ、クライアントは関数経路のみ利用

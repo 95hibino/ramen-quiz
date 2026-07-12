@@ -123,31 +123,23 @@ export const supabaseScoreRepository: ScoreRepository = {
       throw new Error('Supabase が未接続のためスコアを記録できません。');
     }
 
-    // 1) quiz_scores に履歴として INSERT (マイページのプレイ履歴・スコア推移用)
-    const record: ScoreRecord = {
-      id: generateId(),
-      playedAt: new Date().toISOString(),
-      userId: input.userId,
-      quizType: input.quizType,
-      category: input.category,
-      score: input.score,
-      correctCount: input.correctCount,
-      totalCount: input.totalCount,
-    };
-
-    const payload = {
-      id: record.id,
-      user_id: record.userId,
-      quiz_type: record.quizType,
-      category: record.category ?? null,
-      score: record.score,
-      correct_count: record.correctCount,
-      total_count: record.totalCount,
-      played_at: record.playedAt,
-    };
-
-    const { error } = await client.from(QUIZ_SCORES_TABLE).insert(payload);
+    // §15: SECURITY DEFINER 関数 record_quiz_score を経由して記録する。
+    // これにより:
+    // - quiz_scores INSERT は関数内で行われ、RLS を bypass できるので JWT 伝播 race で失敗しない
+    // - id はサーバが gen_random_uuid で発行 → クライアントは受け取るだけ
+    // - rankingCategory 指定時はベストスコアも同一トランザクション内で更新される
+    // - レート制限トリガーは INSERT 時に発火するので Bot 対策は維持される
+    const { data, error } = await client.rpc('record_quiz_score', {
+      p_quiz_type: input.quizType,
+      p_category: input.category ?? null,
+      p_score: input.score,
+      p_correct_count: input.correctCount,
+      p_total_count: input.totalCount,
+      p_ranking_category: input.rankingCategory ?? null,
+    });
     if (error) {
+      // レート制限トリガーからの `rate_limit_exceeded:<秒数>` を検出し、構造化した
+      // RateLimitError に変換する (UI 側でカウントダウン表示に使える)。
       const composite = [error.message, error.details, error.hint]
         .filter((s): s is string => typeof s === 'string')
         .join(' | ');
@@ -158,26 +150,19 @@ export const supabaseScoreRepository: ScoreRepository = {
       throw new Error(`スコア記録に失敗しました: ${error.message}`);
     }
 
-    // 2) rankingCategory が指定されていればベストスコアを更新 (§14 RPC)。
-    //    新記録のときのみサーバ側で UPDATE される。復習セッションなどでは
-    //    rankingCategory を渡さずに呼ぶことでランキングへの反映を抑止できる。
-    if (input.rankingCategory) {
-      const { error: rpcError } = await client.rpc('record_best_score', {
-        p_ranking_category: input.rankingCategory,
-        p_score: input.score,
-        p_correct_count: input.correctCount,
-        p_total_count: input.totalCount,
-      });
-      if (rpcError) {
-        // ベストスコア更新の失敗はプレイ履歴 (quiz_scores) 保存は成功しているため、
-        // ユーザー体験を止めない。warn だけ残す。
-        console.warn(
-          '[supabaseScoreRepository] record_best_score RPC failed:',
-          rpcError.message,
-        );
-      }
-    }
+    // 関数の RETURNS TEXT は生成された quiz_scores.id。念のため型ガード。
+    const scoreId = typeof data === 'string' ? data : generateId();
 
+    const record: ScoreRecord = {
+      id: scoreId,
+      userId: input.userId,
+      quizType: input.quizType,
+      category: input.category,
+      score: input.score,
+      correctCount: input.correctCount,
+      totalCount: input.totalCount,
+      playedAt: new Date().toISOString(),
+    };
     return record;
   },
 
