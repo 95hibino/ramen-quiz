@@ -2,7 +2,7 @@
  * Supabase Auth 実装の AuthRepository。
  *
  * ユーザー名 + パスワード UX を維持しつつ、内部的には Supabase Auth の Email+Password
- * 認証を fake email (`<hash>@ramen-quiz.internal`) 経由で使う。
+ * 認証を fake email (`<hash>@example.com`) 経由で使う。
  *
  * ID は Supabase Auth が発行する auth.uid() (UUID)。public_profiles.id と一致させ、
  * `quiz_scores.user_id = auth.uid()` を RLS で強制することで詐称を防ぐ。
@@ -12,6 +12,13 @@
  * - Anonymous / Magic link は不要
  *
  * このモジュールは Supabase 接続時のみ使う。未接続時は localAuthRepository を利用。
+ *
+ * 【自己修復設計】
+ * - signup は 3 段階 (auth.users 作成 → セッション確立 → public_profiles upsert) で
+ *   途中で失敗すると片方だけ登録される「孤児状態」が起こり得る。
+ * - これを避けるため、signup 開始前に pending-profile を localStorage に保存し、
+ *   login 時に profile が DB にいなければ pending-profile から自動 upsert して復旧する。
+ * - 完全に成功した signup では pending-profile をクリアするので通常は無害。
  */
 import { AuthError as SupabaseAuthError, type Session } from '@supabase/supabase-js';
 import type {
@@ -119,6 +126,86 @@ export async function restoreCurrentUser(): Promise<User | null> {
   return fetchProfileById(session.user.id);
 }
 
+// ==========================================================================
+// pending-profile: signup 中断時の自己修復用ストレージ
+// ==========================================================================
+// signup 開始時に「これから登録しようとしている profile 情報」を localStorage に保存し、
+// 何らかの理由で public_profiles への upsert が失敗して孤児状態になった場合に、
+// 次回 login 時に自動で復旧できるようにする。
+
+const PENDING_PROFILE_STORAGE_KEY = 'ramen-quiz:pending-profile';
+
+interface PendingProfile {
+  username: string;
+  prefecture: string;
+  favoriteShop: string;
+  savedAt: string;
+}
+
+function savePendingProfile(profile: Omit<PendingProfile, 'savedAt'>): void {
+  try {
+    localStorage.setItem(
+      PENDING_PROFILE_STORAGE_KEY,
+      JSON.stringify({ ...profile, savedAt: new Date().toISOString() } satisfies PendingProfile),
+    );
+  } catch {
+    /* localStorage 容量超過等は無視 (修復機能は best-effort) */
+  }
+}
+
+function loadPendingProfile(): PendingProfile | null {
+  try {
+    const raw = localStorage.getItem(PENDING_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as PendingProfile).username !== 'string' ||
+      typeof (parsed as PendingProfile).prefecture !== 'string' ||
+      typeof (parsed as PendingProfile).favoriteShop !== 'string'
+    ) {
+      return null;
+    }
+    return parsed as PendingProfile;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingProfile(): void {
+  try {
+    localStorage.removeItem(PENDING_PROFILE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 与えられた User 情報を public_profiles に upsert する。エラーがあれば投げる。
+ * signup 時と login 時の自己修復時の両方から使う。
+ */
+async function upsertProfileRow(user: User): Promise<void> {
+  const client = requireClient();
+  const { error } = await client
+    .from(PUBLIC_PROFILES_TABLE)
+    .upsert(
+      {
+        id: user.id,
+        username: user.username,
+        prefecture: user.prefecture,
+        favorite_shop: user.favoriteShop,
+      },
+      { onConflict: 'id' },
+    );
+  if (error) {
+    throw new AuthError(
+      'unknown',
+      `プロフィール保存に失敗しました: ${error.message}`,
+    );
+  }
+}
+
 export const supabaseAuthRepository: AuthRepository = {
   async signup(input: SignupInput): Promise<User> {
     const usernameErr = validateUsername(input.username);
@@ -143,7 +230,11 @@ export const supabaseAuthRepository: AuthRepository = {
 
     const email = await usernameToFakeEmail(username);
 
-    // Supabase Auth 側にユーザー作成 + 自動でサインインまで済ませる。
+    // 【自己修復ステップ 0】 signup 開始前に profile 情報を localStorage に保存する。
+    // ここで失敗しても signup は続行、次回 login 時にリカバリ可能。
+    savePendingProfile({ username, prefecture: input.prefecture, favoriteShop });
+
+    // Supabase Auth 側にユーザー作成。
     // Email confirmation は Supabase ダッシュボードで OFF にしておくこと (SUPABASE_SETUP.md §11)。
     const { data: signUpData, error: signUpError } = await client.auth.signUp({
       email,
@@ -151,6 +242,22 @@ export const supabaseAuthRepository: AuthRepository = {
     });
     if (signUpError || !signUpData.user) {
       throw toAuthError(signUpError, 'アカウント作成に失敗しました。');
+    }
+
+    // 【重要】 Confirm email が OFF なら signUp が session を返してくれる。
+    // ON のままだと session が null → 続く upsert は anon 扱いで RLS で弾かれる。
+    // その場合は明示的に signInWithPassword を試み、それでもダメなら明示エラーを投げる。
+    if (!signUpData.session) {
+      const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+        email,
+        password: input.password,
+      });
+      if (signInError || !signInData.session) {
+        throw new AuthError(
+          'unknown',
+          'アカウント作成の初期化に失敗しました。Supabase Dashboard で「Confirm email」を OFF にしてください (docs/SUPABASE_SETUP.md §11 参照)。',
+        );
+      }
     }
 
     // public_profiles に upsert。id は auth.uid() と一致する。
@@ -161,25 +268,12 @@ export const supabaseAuthRepository: AuthRepository = {
       favoriteShop,
       createdAt: new Date().toISOString(),
     };
-    const { error: profileError } = await client
-      .from(PUBLIC_PROFILES_TABLE)
-      .upsert(
-        {
-          id: newProfile.id,
-          username: newProfile.username,
-          prefecture: newProfile.prefecture,
-          favorite_shop: newProfile.favoriteShop,
-        },
-        { onConflict: 'id' },
-      );
-    if (profileError) {
-      // Auth ユーザーは作成済みなので rollback は難しい (Service Role Key が必要)。
-      // ここは警告に留め、次回ログイン時に再 upsert 可能な設計にしておく。
-      console.warn(
-        '[supabaseAuthRepository] public_profiles upsert failed after signup:',
-        profileError.message,
-      );
-    }
+    // 【変更】 silent fail をやめる。upsert に失敗したら明示エラーを投げる。
+    // pending-profile はクリアせず残しておく → 次回 login 時に自己修復される。
+    await upsertProfileRow(newProfile);
+
+    // 成功したので pending-profile はクリア。
+    clearPendingProfile();
 
     return newProfile;
   },
@@ -201,16 +295,44 @@ export const supabaseAuthRepository: AuthRepository = {
     }
 
     const profile = await fetchProfileById(data.user.id);
-    if (!profile) {
-      // Auth 認証成功だがプロフィール未登録 (旧サインアップの中断など)。
-      // localStorage に情報が無ければ再度サインアップ情報を求めるべきだが、
-      // ここでは最小限のユーザーを返して UI 側に判定させる。
-      throw new AuthError(
-        'unknown',
-        'プロフィール情報が見つかりません。再度サインアップしてください。',
-      );
+    if (profile) return profile;
+
+    // 【自己修復】 Auth 認証は成功したが public_profiles に行が無い (孤児状態)。
+    // signup の途中で失敗した可能性。pending-profile が同じユーザー名なら自動で upsert する。
+    const pending = loadPendingProfile();
+    if (pending && pending.username.trim().toLowerCase() === username.toLowerCase()) {
+      if (!isValidPrefecture(pending.prefecture)) {
+        throw new AuthError(
+          'unknown',
+          'プロフィール情報の自動復旧に失敗しました。都道府県の値が不正です。再サインアップしてください。',
+        );
+      }
+      const restored: User = {
+        id: data.user.id,
+        username,
+        prefecture: pending.prefecture as Prefecture,
+        favoriteShop: pending.favoriteShop,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await upsertProfileRow(restored);
+        clearPendingProfile();
+        console.info('[supabaseAuthRepository] pending-profile から self-heal に成功しました');
+        return restored;
+      } catch (healErr) {
+        console.warn('[supabaseAuthRepository] self-heal に失敗:', healErr);
+        throw new AuthError(
+          'unknown',
+          'プロフィール情報の自動復旧に失敗しました。再度サインアップしてください。',
+        );
+      }
     }
-    return profile;
+
+    // 復旧材料なし。明示的にサインアップを促す。
+    throw new AuthError(
+      'unknown',
+      'プロフィール情報が見つかりません。再度サインアップしてください。',
+    );
   },
 
   async isUsernameTaken(username: string): Promise<boolean> {
