@@ -10,8 +10,12 @@
  *   を返す (社長が GCP をセットアップするまでは既存挙動維持)。
  * - 設定済みなら Google Cloud Vision REST API の `images:annotate` に SAFE_SEARCH_DETECTION
  *   を投げ、結果をアプリのしきい値に照らして判定する。
- * - Node runtime (Vercel 標準の Node.js Serverless Function) で動かす。
- *   Edge Runtime は fetch サイズ制限があるため画像バイナリを扱う本用途には不向き。
+ *
+ * Runtime: Edge (api/og.tsx と統一)。
+ *   Web 標準の Request/Response で書けて cold start が短く、fetch がネイティブで使える。
+ *   Body 上限は 4MB だが、投稿画像は 800px WebP に最適化済みで通常 50〜200KB なので十分。
+ *   Node runtime を指定していたバージョンは Vercel で不完全な扱いだったため、
+ *   応答が返らずハングする不具合があった (2026-07-15 修正)。
  *
  * しきい値ポリシー:
  * - adult / violence / racy が `LIKELY` または `VERY_LIKELY` → 拒否
@@ -25,7 +29,7 @@
  * docs/CLOUD_VISION_SETUP.md にセットアップ手順を記載。
  */
 export const config = {
-  runtime: 'nodejs',
+  runtime: 'edge',
 };
 
 /** SafeSearch のカテゴリ (Google 側の likelihood 名)。 */
@@ -116,10 +120,9 @@ export default async function handler(request: Request): Promise<Response> {
     return json({ safe: false, reason: 'imageBase64 が指定されていません' }, 400);
   }
 
-  // 画像サイズの上限 (Google 側は 20MB / リクエスト、base64 化で ~4/3 倍膨らむ)
-  // 我々は最適化後 800px WebP を送るので通常 100KB 以下だが、
-  // 明らかに大きいものは弾いて費用暴走を防ぐ。
-  if (imageBase64.length > 15 * 1024 * 1024) {
+  // 画像サイズの上限 (Edge runtime の body 上限は 4MB。base64 は ~4/3 倍に膨らむ)
+  // 通常 800px WebP は 50〜200KB なので余裕あり。3.5MB を超えたら弾く。
+  if (imageBase64.length > 3.5 * 1024 * 1024) {
     return json({ safe: false, reason: '画像サイズが大きすぎます' }, 400);
   }
 

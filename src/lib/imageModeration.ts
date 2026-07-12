@@ -39,9 +39,14 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return typeof btoa === 'function' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
 }
 
+/** クライアント側で投稿ボタンをブロックする最大秒数 (これを超えたら Fail-Open で通す)。 */
+const MODERATION_TIMEOUT_MS = 15_000;
+
 /**
  * 画像 Blob を `/api/moderate-image` に投げて判定結果を得る。
- * ネットワーク失敗時は `safe: true, disabled: true` を返す (Fail-Open)。
+ * - ネットワーク失敗時: `safe: true, disabled: true` (Fail-Open)
+ * - MODERATION_TIMEOUT_MS 経過でタイムアウトし Fail-Open
+ *   (Vercel Function が万一ハングしても投稿ボタンが固まらないように)
  */
 export async function moderateImage(blob: Blob): Promise<ModerationResult> {
   let imageBase64: string;
@@ -53,12 +58,19 @@ export async function moderateImage(blob: Blob): Promise<ModerationResult> {
     return { safe: true, disabled: true };
   }
 
+  // タイムアウト用の AbortController。
+  // fetch が MODERATION_TIMEOUT_MS 以内に応答しない場合、abort して Fail-Open に落とす。
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MODERATION_TIMEOUT_MS);
+
   try {
     const res = await fetch('/api/moderate-image', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ imageBase64 }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     if (!res.ok) {
       console.warn('[imageModeration] endpoint returned non-2xx:', res.status);
       return { safe: true, disabled: true };
@@ -70,7 +82,10 @@ export async function moderateImage(blob: Blob): Promise<ModerationResult> {
     }
     return data;
   } catch (err) {
-    console.warn('[imageModeration] fetch 失敗:', err);
+    clearTimeout(timeoutId);
+    // AbortError も含めて Fail-Open で通す。
+    // Vercel Function の障害でユーザーが投稿できないのはより悪い UX。
+    console.warn('[imageModeration] fetch 失敗 or timeout:', err);
     return { safe: true, disabled: true };
   }
 }
