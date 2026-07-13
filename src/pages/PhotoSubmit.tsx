@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
 import { useAuthStore } from '@/stores/authStore';
@@ -107,6 +107,12 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
   >('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // 投稿前の同意チェック (プライバシー・著作権・免責)。
+  // 未同意なら投稿ボタンを disabled にする。同意ログは残さない (UI ゲートのみ)
+  // — 個人特定情報を意図的に増やさない方針のため。規約側で「利用時に同意したとみなす」条項を担保。
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const agreementCheckboxId = useId();
 
   // プレビュー URL の解放
   useEffect(() => {
@@ -221,6 +227,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
     !hasFieldErrors &&
     !!optimized &&
     !imageError &&
+    agreedToTerms &&
     submitState !== 'submitting' &&
     submitState !== 'moderating' &&
     supabaseReady;
@@ -234,6 +241,10 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
       return;
     }
     if (hasFieldErrors) return;
+    if (!agreedToTerms) {
+      setSubmitError('投稿には投稿ガイドラインへの同意が必要です。');
+      return;
+    }
     if (!supabaseReady) {
       setSubmitError('Supabase が未接続のため投稿できません。社長の作業をお待ちください。');
       return;
@@ -610,6 +621,50 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
             error={errors.shopDescription}
             placeholder="例) 1968 年創業の二郎系総本山"
           />
+        </section>
+
+        {/* 投稿ガイドライン同意 (必須) */}
+        <section className="card space-y-3 border-2 border-ramen-chili/30 bg-ramen-chili/5">
+          <h2 className="text-base font-bold text-ramen-soy">投稿ガイドライン (必須確認)</h2>
+          <p className="text-xs text-ramen-soy/80">
+            投稿前に以下すべてをご確認のうえ、同意チェックを入れてください。
+          </p>
+          <ul className="ml-5 list-disc space-y-1 text-xs text-ramen-soy/80">
+            <li>
+              画像に <span className="font-bold">他人の顔・車のナンバー・名札・注文票など個人を特定できる情報</span>
+              が写り込んでいないことを確認しました。
+            </li>
+            <li>
+              画像は<span className="font-bold">自分が撮影したもの</span>であり、他人の著作物
+              （メニュー表・店内アート・他人が撮影した写真の転載など）を無断で含んでいません。
+            </li>
+            <li>
+              撮影禁止の店舗ではなく、店舗の撮影ルールに違反していません。
+            </li>
+            <li>
+              問題が判明した場合、運営が予告なく投稿を削除・非表示にできることに同意します。
+              また、投稿内容についての一切の責任は投稿者本人にあることを理解しています
+              （<Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-ramen-chili underline">
+                利用規約
+              </Link>
+              §3 禁止事項・§4 投稿ライセンス・§6 免責事項）。
+            </li>
+          </ul>
+          <label
+            htmlFor={agreementCheckboxId}
+            className="flex cursor-pointer items-start gap-2 rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ramen-soy"
+          >
+            <input
+              id={agreementCheckboxId}
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-ramen-chili"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              required
+              aria-required="true"
+            />
+            <span>上記すべてに同意して投稿します</span>
+          </label>
         </section>
 
         {submitError ? (
