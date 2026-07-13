@@ -1308,3 +1308,51 @@ GRANT EXECUTE ON FUNCTION public.get_my_ranking(TEXT) TO authenticated;
 
 - 該当カテゴリで一度もプレイしていない場合: 0 行 (フロント側で null 扱い)
 - 一度でもプレイして quiz_best_scores に行がある場合: 1 行 (my_rank + プロフィール情報 + ベストスコア詳細)
+
+---
+
+## §17 写真投稿の RLS を authenticated 対応に (§12 と同じパッチ)
+
+§3〜§4 で作った `user_photo_questions` と `storage.objects` (photo-quiz-user バケット)
+の RLS ポリシーは `TO anon` に限定されていた。Phase G (§11) で全ユーザーが
+`authenticated` ロールになった後、これらのポリシーは適用されず、写真投稿時に
+「new row violates row-level security policy」エラーが発生する。
+
+§12 で `public_profiles` / `quiz_scores` の SELECT を修正したのと同じパターン。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- user_photo_questions テーブル
+-- ==========================================
+DROP POLICY IF EXISTS "anon_select" ON user_photo_questions;
+DROP POLICY IF EXISTS "anon_insert" ON user_photo_questions;
+
+CREATE POLICY "public_photo_questions_select" ON user_photo_questions
+  FOR SELECT TO public USING (true);
+
+CREATE POLICY "public_photo_questions_insert" ON user_photo_questions
+  FOR INSERT TO public WITH CHECK (true);
+
+-- ==========================================
+-- Storage: photo-quiz-user バケット
+-- ==========================================
+DROP POLICY IF EXISTS "anon_storage_select" ON storage.objects;
+DROP POLICY IF EXISTS "anon_storage_insert" ON storage.objects;
+
+CREATE POLICY "public_storage_select" ON storage.objects
+  FOR SELECT TO public USING (bucket_id = 'photo-quiz-user');
+
+CREATE POLICY "public_storage_insert" ON storage.objects
+  FOR INSERT TO public WITH CHECK (bucket_id = 'photo-quiz-user');
+```
+
+### 効果
+
+- ログイン中ユーザー (`authenticated`) からの Storage アップロード + DB INSERT が通る
+- 未ログインユーザー (`anon`) も引き続きアップロード可能 (元設計と互換)
+- UPDATE / DELETE ポリシーは未作成のままなので改ざん・削除は不可
+- 既存の CHECK 制約 (バケット MIME・サイズ、DB CHECK) とレート制限トリガーは維持
+- 詳細な詐称対策 (submitter_id = auth.uid() 強制など) は将来 SECURITY DEFINER 関数化して
+  §13 / §15 と同じ方式に統一する予定 (現状はフロント検証 + レート制限で抑制)
