@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePhotoQuizStore } from '@/stores/photoQuizStore';
 import { PhotoQuizCard } from '@/components/quiz/PhotoQuizCard';
+import { ReporterBlockedScreen } from '@/components/quiz/ReporterBlockedScreen';
 import { Timer } from '@/components/common/Timer';
 import { ScoreBar } from '@/components/quiz/ScoreBar';
 import { AdBanner } from '@/components/common/AdBanner';
 import { Seo } from '@/components/common/Seo';
 import { useTimer } from '@/hooks/useTimer';
+import { useReporterBlockStatus } from '@/hooks/useReporterBlockStatus';
 import {
   AD_INTERVAL_QUESTIONS,
   PHOTO_QUESTION_TIME_LIMIT_SEC,
@@ -28,6 +30,7 @@ export function PhotoQuizPlay(): JSX.Element {
   const errorMessage = usePhotoQuizStore((s) => s.errorMessage);
   const submitAnswer = usePhotoQuizStore((s) => s.submitAnswer);
   const goToNextQuestion = usePhotoQuizStore((s) => s.goToNextQuestion);
+  const blockStatus = useReporterBlockStatus();
 
   const currentQuestion = questions[currentIndex];
   const isAnsweredForCurrent = answers.length > currentIndex;
@@ -85,6 +88,17 @@ export function PhotoQuizPlay(): JSX.Element {
     isAnsweredForCurrent &&
     !isLastQuestion &&
     (currentIndex + 1) % AD_INTERVAL_QUESTIONS === 0;
+
+  // §20: 通報乱用でブロック中のユーザーはプレイ画面を塞ぐ。
+  // 直リンク (/quiz/photo/play) からのアクセスも遮断する。
+  if (blockStatus.state === 'blocked') {
+    return (
+      <div className="space-y-5">
+        <Seo title="写真当てクイズ" description="写真当てクイズ" url="/quiz/photo/play" noIndex />
+        <ReporterBlockedScreen block={blockStatus.block} />
+      </div>
+    );
+  }
 
   if (status === 'loading' || status === 'idle') {
     return <p className="card text-center">問題を読み込み中...</p>;

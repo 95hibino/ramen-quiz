@@ -1411,7 +1411,16 @@ ORDER BY report_count DESC, latest_report DESC
 LIMIT 10;
 ```
 
-## §19 通報 N 件超えた問題の自動非表示化
+## §19 通報 N 件超えた問題の自動非表示化 【廃止 — §20 に置換】
+
+**⚠️ このセクションは §20 で置換されました。§20 の SQL を実行すればトリガーは自動削除されます。**
+
+理由: 3 件の通報 (同一人物が 3 回クリックしても発火) で即非表示になる設計は乱用リスクが高く、
+「すぐには非表示にせず、管理者が判断する」方針に変更しました。
+
+is_hidden カラム自体は §20 でも引き続き使用します (社長判断で手動 UPDATE)。
+
+---
 
 `content_reports` に一定数以上の通報が集まった写真クイズを自動的に非表示にする仕組み。
 フロント側 (`supabasePhotoQuestionRepository`) は全取得系メソッド (findByFilter / findByIds /
@@ -1538,3 +1547,184 @@ UPDATE user_photo_questions SET is_hidden = true WHERE id = '<question_uuid>';
 - 一定期間経過後の自動復活なし
 
 これらは実運用で問題が起きた時点で追加検討する。
+
+## §20 通報者の識別・重複防止・レート制限ブロック (§19 を置換)
+
+§19 の自動非表示トリガーを廃止し、代わりに以下を導入する:
+
+1. **通報にはログイン必須** — `content_reports.reporter_id` を必須化 (auth.uid())
+2. **重複通報の防止** — 同じ人が同じ問題を複数回通報しても DB 上は 1 件のみ (UNIQUE)
+3. **通報者レート制限** — 24 時間で 5 件以上通報したユーザーを `reporter_blocks` に登録
+4. **ブロック効果**:
+   - RLS で通報 INSERT を拒否
+   - フロントで写真クイズ画面自体をブロック (プレイ不可)
+5. **自動非表示は廃止** — 通報は蓄積されるだけ。社長が下記 SQL でレビューして手動で `is_hidden = true` にする
+
+### 前提
+
+- §18 で `content_reports` テーブルが存在すること
+- §19 の `is_hidden` カラムが `user_photo_questions` に追加済みであること (§20 でも使い続ける)
+  - 未実施なら §19 の「1. is_hidden カラムを追加」ブロックだけ先に実行
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- 1. §19 の自動非表示トリガーを削除
+-- ==========================================
+DROP TRIGGER IF EXISTS trg_auto_hide_reported_photo_question ON content_reports;
+DROP FUNCTION IF EXISTS auto_hide_reported_photo_question();
+
+-- ==========================================
+-- 2. content_reports に reporter_id を追加
+-- ==========================================
+-- auth.users への FK。ユーザー削除時は SET NULL (通報履歴は残す)。
+ALTER TABLE content_reports
+  ADD COLUMN IF NOT EXISTS reporter_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- 同じ人が同じ問題を複数回通報するのを DB 側で拒否 (UNIQUE 制約)
+-- reporter_id が NULL の既存レガシー行 (もしあれば) は複数許容 (NULL != NULL の PG 仕様)
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_content_reports_reporter_question
+  ON content_reports (reporter_id, question_id);
+
+-- ==========================================
+-- 3. 通報者ブロックテーブル
+-- ==========================================
+CREATE TABLE IF NOT EXISTS reporter_blocks (
+  reporter_id       UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  blocked_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reason            TEXT,
+  auto_report_count INT
+);
+
+ALTER TABLE reporter_blocks ENABLE ROW LEVEL SECURITY;
+
+-- 自分のブロック状態のみ SELECT 可 (フロントで判定するため)。
+-- 他人のブロック状態は見えない。管理者は Service Role Key で閲覧。
+DROP POLICY IF EXISTS "self_read_own_block" ON reporter_blocks;
+CREATE POLICY "self_read_own_block" ON reporter_blocks
+  FOR SELECT TO authenticated
+  USING (reporter_id = auth.uid());
+
+-- ==========================================
+-- 4. content_reports の INSERT ポリシー差し替え
+--    自分の auth.uid() でしか INSERT できず、ブロック中は拒否される。
+-- ==========================================
+DROP POLICY IF EXISTS "public_reports_insert" ON content_reports;
+DROP POLICY IF EXISTS "anon_reports_insert" ON content_reports;
+DROP POLICY IF EXISTS "authenticated_reports_insert" ON content_reports;
+
+CREATE POLICY "authenticated_reports_insert" ON content_reports
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    reporter_id = auth.uid()
+    AND NOT EXISTS (
+      SELECT 1 FROM reporter_blocks
+        WHERE reporter_id = auth.uid()
+    )
+  );
+
+-- ==========================================
+-- 5. レート制限トリガー: 24h で 5 件以上通報 → 自動ブロック
+--    (この値は関数内定数で調整可能)
+-- ==========================================
+CREATE OR REPLACE FUNCTION check_reporter_rate_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  -- チューニング可能な閾値。運用で調整するならここを変える。
+  window_hours INT := 24;
+  max_reports  INT := 5;
+  recent_count INT;
+BEGIN
+  -- 匿名通報 (万一混入した場合) はスキップ
+  IF NEW.reporter_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- 過去 window_hours 時間の同一 reporter からの通報数を数える
+  -- (この関数は AFTER INSERT なので今回の行も含まれる)
+  SELECT COUNT(*) INTO recent_count
+    FROM content_reports
+    WHERE reporter_id = NEW.reporter_id
+      AND created_at >= NOW() - (window_hours || ' hours')::interval;
+
+  IF recent_count >= max_reports THEN
+    INSERT INTO reporter_blocks (reporter_id, reason, auto_report_count)
+      VALUES (
+        NEW.reporter_id,
+        FORMAT('excessive_reports: %s in %sh', recent_count, window_hours),
+        recent_count
+      )
+      ON CONFLICT (reporter_id) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_check_reporter_rate_limit ON content_reports;
+CREATE TRIGGER trg_check_reporter_rate_limit
+  AFTER INSERT ON content_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION check_reporter_rate_limit();
+```
+
+### 効果
+
+- **1 件目の通報では何も起きない** (蓄積のみ)。以前のような即非表示はない
+- 通報の重複はDB側で防がれる (`23505 unique_violation` → フロントで「既に通報済み」表示)
+- 24h で 5 件超えた通報者は次回以降の通報 INSERT が RLS でリジェクトされる
+- 写真クイズ画面自体をフロントでゲート (詳細後述の PhotoQuiz.tsx / PhotoQuizPlay.tsx の実装)
+- 社長は下記 SQL でレビュー・対応する
+
+### 社長の運用 SQL
+
+#### 通報の多い問題を確認 (優先対応判断)
+
+```sql
+SELECT
+  cr.question_id,
+  q.shop_info->>'name' AS shop_name,
+  COUNT(DISTINCT cr.reporter_id) AS unique_reporters,
+  ARRAY_AGG(DISTINCT cr.reason) AS reasons,
+  MAX(cr.created_at) AS latest_report,
+  q.is_hidden
+FROM content_reports cr
+LEFT JOIN user_photo_questions q ON q.id = cr.question_id
+WHERE cr.reporter_id IS NOT NULL
+GROUP BY cr.question_id, q.shop_info->>'name', q.is_hidden
+HAVING COUNT(DISTINCT cr.reporter_id) >= 2
+ORDER BY unique_reporters DESC, latest_report DESC;
+```
+
+#### 手動で問題を非表示化
+
+```sql
+UPDATE user_photo_questions SET is_hidden = true WHERE id = '<question_uuid>';
+```
+
+#### 通報乱用でブロックされたユーザーを解除
+
+```sql
+-- 現在ブロック中のユーザー一覧
+SELECT rb.reporter_id, p.username, rb.blocked_at, rb.reason, rb.auto_report_count
+FROM reporter_blocks rb
+LEFT JOIN public_profiles p ON p.user_id = rb.reporter_id
+ORDER BY rb.blocked_at DESC;
+
+-- 特定ユーザーのブロックを解除
+DELETE FROM reporter_blocks WHERE reporter_id = '<user_uuid>';
+```
+
+### 動作確認
+
+1. アカウント A で `/quiz/photo/play` にアクセス → 1 問プレイ → 通報ボタンから通報 → トースト表示
+2. 同じ問題をもう一度通報しようとする → 「既に通報済み」エラー表示
+3. アカウント A で異なる問題を計 5 件通報 (24h 以内)
+4. アカウント A で `/quiz/photo` にアクセス → ブロック画面が表示され、プレイできない
+5. 社長が SQL で `DELETE FROM reporter_blocks WHERE reporter_id = '<a_uuid>';`
+6. アカウント A で `/quiz/photo` → 再度プレイ可能

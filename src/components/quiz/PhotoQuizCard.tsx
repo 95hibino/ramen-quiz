@@ -6,6 +6,7 @@ import { resolveOptionState } from './optionState';
 import { ReportModal } from './ReportModal';
 import { FavoriteButton } from './FavoriteButton';
 import { isReportRepositoryReady } from '@/lib/supabaseReportRepository';
+import { useAuthStore } from '@/stores/authStore';
 
 interface PhotoQuizCardProps {
   question: PhotoQuestion;
@@ -20,8 +21,9 @@ interface PhotoQuizCardProps {
  * 写真当てクイズ用カード。
  * 画像 → 問題文 → 4 択 → (回答後) 解説 + 店舗情報 の縦並び。
  *
- * カード右下に「⚠ この問題を通報」リンクを設置 (Supabase 接続時のみ)。
+ * カード右下に「⚠ この問題を通報」リンクを設置 (Supabase 接続時 + ログイン中のみ)。
  * クリックでモーダルを開き、`content_reports` テーブルに INSERT。
+ * 通報にはログインが必須 (§20)。未ログインではボタン自体を非表示。
  */
 export function PhotoQuizCard({
   question,
@@ -29,9 +31,11 @@ export function PhotoQuizCard({
   isAnswered,
   onSelect,
 }: PhotoQuizCardProps): JSX.Element {
-  // Supabase が接続されていれば通報ボタンを表示する。
+  // Supabase が接続されていれば通報ボタンを表示する (かつログイン中のみ)。
   // 接続状態はモジュールロード時に確定するため、初期値で評価して再描画コストを削る。
   const [reportReady] = useState<boolean>(() => isReportRepositoryReady());
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const canReport = reportReady && !!currentUser;
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -112,7 +116,7 @@ export function PhotoQuizCard({
         </div>
       ) : null}
 
-      {reportReady ? (
+      {canReport ? (
         <div className="flex justify-end">
           <button
             type="button"

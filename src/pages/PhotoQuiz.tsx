@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
 import { AdBanner } from '@/components/common/AdBanner';
+import { ReporterBlockedScreen } from '@/components/quiz/ReporterBlockedScreen';
 import { compositePhotoQuestionRepository } from '@/lib/compositePhotoQuestionRepository';
 import { usePhotoQuizStore } from '@/stores/photoQuizStore';
+import { useReporterBlockStatus } from '@/hooks/useReporterBlockStatus';
 import { PREFECTURES, type Prefecture } from '@/data/prefectures';
 import {
   DIFFICULTY_OPTIONS,
@@ -28,6 +30,7 @@ export function PhotoQuiz(): JSX.Element {
   const navigate = useNavigate();
   const setFilter = usePhotoQuizStore((s) => s.setFilter);
   const startSession = usePhotoQuizStore((s) => s.startSession);
+  const blockStatus = useReporterBlockStatus();
 
   const [ramenTypes, setRamenTypes] = useState<RamenType[]>([]);
   const [prefectures, setPrefectures] = useState<Prefecture[]>([]);
@@ -81,6 +84,17 @@ export function PhotoQuiz(): JSX.Element {
   };
 
   const isStartDisabled = availableCount === null || availableCount === 0;
+
+  // 通報乱用でブロックされたユーザーは通常の UI を全て隠す (プレイ導線を塞ぐ)。
+  // ローディング中は何も描画しない (ちらつき防止)。
+  if (blockStatus.state === 'blocked') {
+    return (
+      <div className="space-y-6">
+        <Seo title="写真当てクイズ" description="写真当てクイズ" url="/quiz/photo" noIndex />
+        <ReporterBlockedScreen block={blockStatus.block} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
