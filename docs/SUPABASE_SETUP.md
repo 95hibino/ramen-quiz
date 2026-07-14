@@ -1356,3 +1356,57 @@ CREATE POLICY "public_storage_insert" ON storage.objects
 - 既存の CHECK 制約 (バケット MIME・サイズ、DB CHECK) とレート制限トリガーは維持
 - 詳細な詐称対策 (submitter_id = auth.uid() 強制など) は将来 SECURITY DEFINER 関数化して
   §13 / §15 と同じ方式に統一する予定 (現状はフロント検証 + レート制限で抑制)
+
+## §18 通報機能の RLS を authenticated 対応に (§17 と同じパッチ)
+
+§11 で作った `content_reports` テーブルの INSERT ポリシーは `TO anon` に限定されていた。
+Phase G 以降のログイン中ユーザーは `authenticated` ロールなので、そのままだと
+通報ボタンから送信しても「new row violates row-level security policy」で失敗する。
+
+写真クイズカード右下の「⚠ この問題を通報」から通報を成立させるために必要なパッチ。
+
+### 前提: §11 の `content_reports` テーブルが未作成なら、先に §11 の SQL を実行すること
+
+`SELECT to_regclass('public.content_reports');` が NULL を返す場合は §11 未実行。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- content_reports の INSERT を public に開放
+-- ==========================================
+DROP POLICY IF EXISTS "anon_reports_insert" ON content_reports;
+
+CREATE POLICY "public_reports_insert" ON content_reports
+  FOR INSERT TO public WITH CHECK (true);
+```
+
+### 効果
+
+- ログイン中ユーザー / 未ログインユーザー双方から通報 INSERT が通る
+- SELECT ポリシーは未作成のままなので、通報一覧の閲覧は Service Role Key 必須 (社長専用) を維持
+- 重複通報 (UNIQUE 制約なし) の設計は §11 のまま。集計で優先対応判断に使う
+
+### 動作確認
+
+1. `/quiz/photo/play` で 1 問プレイ (回答済み or 未回答どちらでも通報ボタンは出る)
+2. カード右下「⚠ この問題を通報」→ モーダルが開く
+3. 理由を選び (任意で補足)、「通報する」→ トースト「通報を受け付けました...」
+4. Supabase Dashboard → Table Editor → `content_reports` に行が追加されていること
+
+### 通報集計 SQL (社長用)
+
+```sql
+-- 通報が多い問題 TOP 10
+SELECT
+  cr.question_id,
+  q.shop_info->>'name' AS shop_name,
+  COUNT(*) AS report_count,
+  ARRAY_AGG(DISTINCT cr.reason) AS reasons,
+  MAX(cr.created_at) AS latest_report
+FROM content_reports cr
+LEFT JOIN user_photo_questions q ON q.id = cr.question_id
+GROUP BY cr.question_id, q.shop_info->>'name'
+ORDER BY report_count DESC, latest_report DESC
+LIMIT 10;
+```
