@@ -199,9 +199,11 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
   async findByFilter(filter: PhotoQuestionFilter): Promise<PhotoQuestion[]> {
     const client = getSupabaseClient();
     if (!client) return [];
+    // is_hidden = false のみ取得。通報トリガー (§19) で自動非表示化された行を除外する。
     const { data, error } = await client
       .from(USER_PHOTO_QUESTIONS_TABLE)
       .select('*')
+      .eq('is_hidden', false)
       .order('created_at', { ascending: false });
     if (error) {
       // 取得失敗時は空配列扱いにしてアプリ落ちを防ぐ (モック側でフォールバック)
@@ -296,10 +298,13 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
   async findBySubmitterId(submitterId: string): Promise<PhotoQuestion[]> {
     const client = getSupabaseClient();
     if (!client) return [];
+    // 自分の投稿一覧でも自動非表示化された行は隠す。
+    // (投稿者に「なぜ消えたか」の表示は将来課題。当面は運営通知で対応。)
     const { data, error } = await client
       .from(USER_PHOTO_QUESTIONS_TABLE)
       .select('*')
       .eq('submitter_id', submitterId)
+      .eq('is_hidden', false)
       .order('created_at', { ascending: false });
     if (error) {
       // 取得失敗時は空配列扱いにしてアプリ落ちを防ぐ
@@ -322,10 +327,12 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
     if (ids.length === 0) return [];
     const client = getSupabaseClient();
     if (!client) return [];
+    // お気に入り復元・レビュー参照時も自動非表示化された行は除外。
     const { data, error } = await client
       .from(USER_PHOTO_QUESTIONS_TABLE)
       .select('*')
-      .in('id', ids);
+      .in('id', ids)
+      .eq('is_hidden', false);
     if (error) {
       console.warn('[supabasePhotoQuestionRepository] findByIds failed:', error.message);
       return [];

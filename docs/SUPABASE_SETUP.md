@@ -1410,3 +1410,131 @@ GROUP BY cr.question_id, q.shop_info->>'name'
 ORDER BY report_count DESC, latest_report DESC
 LIMIT 10;
 ```
+
+## §19 通報 N 件超えた問題の自動非表示化
+
+`content_reports` に一定数以上の通報が集まった写真クイズを自動的に非表示にする仕組み。
+フロント側 (`supabasePhotoQuestionRepository`) は全取得系メソッド (findByFilter / findByIds /
+findBySubmitterId) で `is_hidden = false` を条件に加える。DB 側はトリガーで自動更新するので
+アプリからは何も操作しなくて良い。
+
+### 前提
+
+- §11 で `content_reports` テーブルが作成済みであること
+- §18 で `content_reports` の INSERT が `TO public` に開放済みであること
+
+### 閾値
+
+- **N = 3 件** (SQL 関数内の定数 `hide_threshold` で変更可能)
+- 通報理由 (`privacy` / `copyright` など) による差別化はしない (MVP 方針)
+  - 深刻な違反は 1 件目でも即座に社長判断で `is_hidden = true` に手動更新可能
+  - 将来的に「privacy / copyright は 1 件で非表示」といった段階的しきい値を導入する余地あり
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- 1. is_hidden カラムを追加
+-- ==========================================
+ALTER TABLE user_photo_questions
+  ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT false;
+
+-- 表示中の問題を高速取得するための部分インデックス
+CREATE INDEX IF NOT EXISTS idx_user_photo_questions_visible
+  ON user_photo_questions (created_at DESC)
+  WHERE is_hidden = false;
+
+-- ==========================================
+-- 2. トリガー関数: 通報が閾値超えたら自動非表示
+-- ==========================================
+-- SECURITY DEFINER: content_reports の INSERT を実行する権限しか持たない
+-- ロール (anon / authenticated) からトリガーが起動されるため、UPDATE 権限を
+-- 関数オーナー (postgres) の権限で実行する必要がある。
+CREATE OR REPLACE FUNCTION auto_hide_reported_photo_question()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  -- 通報 N 件で自動非表示。調整するならここを変える。
+  hide_threshold INT := 3;
+  current_count INT;
+BEGIN
+  SELECT COUNT(*) INTO current_count
+    FROM content_reports
+    WHERE question_id = NEW.question_id;
+
+  IF current_count >= hide_threshold THEN
+    -- 既に is_hidden = true なら UPDATE をスキップ (行ロック削減)
+    UPDATE user_photo_questions
+      SET is_hidden = true
+      WHERE id = NEW.question_id AND is_hidden = false;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- ==========================================
+-- 3. トリガー: content_reports の AFTER INSERT で発火
+-- ==========================================
+DROP TRIGGER IF EXISTS trg_auto_hide_reported_photo_question ON content_reports;
+CREATE TRIGGER trg_auto_hide_reported_photo_question
+  AFTER INSERT ON content_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_hide_reported_photo_question();
+```
+
+### 効果
+
+- 通報が 3 件集まった問題は次のクエリから自動的に消える
+- クエリ側 (フロント): `.eq('is_hidden', false)` を全取得メソッドで指定済み
+- 通報者側の UI 挙動は変わらない (トーストで受付通知)
+- 投稿者の My Page からも消える (「なぜ消えたか」の通知は将来課題)
+- DB 上には行が残るので、社長判断で復活可能 (下記コマンド)
+
+### 社長判断で復活・削除する
+
+```sql
+-- 特定問題を復活 (非表示解除)
+UPDATE user_photo_questions SET is_hidden = false WHERE id = '<question_uuid>';
+
+-- 特定問題を完全削除 (§10 の delete_user_question.ts と同じ効果、SQL で直接)
+DELETE FROM user_photo_questions WHERE id = '<question_uuid>';
+
+-- 現在自動非表示になっている問題一覧
+SELECT
+  q.id,
+  q.shop_info->>'name' AS shop_name,
+  q.created_at AS submitted_at,
+  COUNT(cr.id) AS report_count,
+  ARRAY_AGG(DISTINCT cr.reason) AS reasons
+FROM user_photo_questions q
+LEFT JOIN content_reports cr ON cr.question_id = q.id
+WHERE q.is_hidden = true
+GROUP BY q.id, q.shop_info->>'name', q.created_at
+ORDER BY q.created_at DESC;
+
+-- 特定問題を 1 件目の通報でも非表示化したい場合 (privacy / copyright 等)
+UPDATE user_photo_questions SET is_hidden = true WHERE id = '<question_uuid>';
+```
+
+### 動作確認
+
+1. 何か 1 問投稿する (`_shacho` 以外のユーザーで)
+2. 別ブラウザ (シークレット) で 3 つの異なるアカウントを作って、同じ問題に通報を 3 回入れる
+   - あるいは SQL Editor で直接 3 行 INSERT: `INSERT INTO content_reports (question_id, reason) VALUES ('<uuid>', 'other'), ('<uuid>', 'other'), ('<uuid>', 'other');`
+3. `SELECT is_hidden FROM user_photo_questions WHERE id = '<uuid>';` → `true` になっている
+4. `/quiz/photo/play` にアクセス → 該当問題が表示ローテーションから消えている
+5. 社長判断で復活: `UPDATE user_photo_questions SET is_hidden = false WHERE id = '<uuid>';`
+6. 再度 `/quiz/photo/play` → 復活している
+
+### 制限事項 (MVP スコープ外)
+
+- 通報者の重複チェックなし (`content_reports` に `reporter_id` カラムがないため) — 悪意ある同一ユーザーによる連投で不当に非表示化される可能性
+- 通報理由による段階的しきい値の差別化なし (privacy / copyright も一律 3 件)
+- 投稿者への非表示化通知なし
+- 一定期間経過後の自動復活なし
+
+これらは実運用で問題が起きた時点で追加検討する。
