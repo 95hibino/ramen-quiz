@@ -1563,14 +1563,24 @@ UPDATE user_photo_questions SET is_hidden = true WHERE id = '<question_uuid>';
 ### 前提
 
 - §18 で `content_reports` テーブルが存在すること
-- §19 の `is_hidden` カラムが `user_photo_questions` に追加済みであること (§20 でも使い続ける)
-  - 未実施なら §19 の「1. is_hidden カラムを追加」ブロックだけ先に実行
+- (§19 未実施でも OK。この §20 の SQL は is_hidden カラム作成も含めて自己完結)
 
 ### 実行 SQL (SQL Editor で 1 度だけ実行)
 
 ```sql
 -- ==========================================
--- 1. §19 の自動非表示トリガーを削除
+-- 0. is_hidden カラム (§19 で紹介したもの)。§20 でも「管理者が手動で非表示化」
+--    する用途で使い続ける。§19 未実施の環境でも動くよう §20 内で作成する。
+-- ==========================================
+ALTER TABLE user_photo_questions
+  ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_user_photo_questions_visible
+  ON user_photo_questions (created_at DESC)
+  WHERE is_hidden = false;
+
+-- ==========================================
+-- 1. §19 の自動非表示トリガーを削除 (存在しない環境では NO-OP)
 -- ==========================================
 DROP TRIGGER IF EXISTS trg_auto_hide_reported_photo_question ON content_reports;
 DROP FUNCTION IF EXISTS auto_hide_reported_photo_question();
