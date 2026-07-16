@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { Header } from '@/components/common/Header';
 import { Footer } from '@/components/common/Footer';
 import { LoadingFallback } from '@/components/common/LoadingFallback';
@@ -100,6 +101,10 @@ function App(): JSX.Element {
       <Footer />
       <InstallPrompt />
       <UpdatePrompt />
+      {/* Vercel Analytics: PV / 訪問者 / パス別トラフィックを収集。
+          Vercel ダッシュボードの Analytics タブから確認できる。
+          個人特定情報は送信されず、Cookie も使用しない (プライバシー配慮)。 */}
+      <Analytics />
     </div>
   );
 }

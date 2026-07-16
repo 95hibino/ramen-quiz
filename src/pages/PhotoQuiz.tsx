@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
+import { StructuredData } from '@/components/common/StructuredData';
 import { AdBanner } from '@/components/common/AdBanner';
 import { ReporterBlockedScreen } from '@/components/quiz/ReporterBlockedScreen';
 import { compositePhotoQuestionRepository } from '@/lib/compositePhotoQuestionRepository';
 import { usePhotoQuizStore } from '@/stores/photoQuizStore';
 import { useReporterBlockStatus } from '@/hooks/useReporterBlockStatus';
+import { buildSiteUrl, SITE_NAME } from '@/config/site';
 import { PREFECTURES, type Prefecture } from '@/data/prefectures';
 import {
   DIFFICULTY_OPTIONS,
@@ -85,6 +87,41 @@ export function PhotoQuiz(): JSX.Element {
 
   const isStartDisabled = availableCount === null || availableCount === 0;
 
+  // Schema.org: WebPage + BreadcrumbList。
+  // Google のリッチリザルトでパンくずが表示されやすくなる。
+  const structuredData = useMemo<Record<string, unknown>[]>(
+    () => [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: `写真当てクイズ | ${SITE_NAME}`,
+        description:
+          'ラーメンの写真からお店・系統・都道府県を当てる 4 択クイズ。種類・地域・写真タイプ・難易度・麺の太さで絞り込み可能。',
+        url: buildSiteUrl('/quiz/photo'),
+        inLanguage: 'ja',
+        isPartOf: {
+          '@type': 'WebSite',
+          name: SITE_NAME,
+          url: buildSiteUrl('/'),
+        },
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'トップ', item: buildSiteUrl('/') },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: '写真当てクイズ',
+            item: buildSiteUrl('/quiz/photo'),
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
   // 通報乱用でブロックされたユーザーは通常の UI を全て隠す (プレイ導線を塞ぐ)。
   // ローディング中は何も描画しない (ちらつき防止)。
   if (blockStatus.state === 'blocked') {
@@ -104,6 +141,7 @@ export function PhotoQuiz(): JSX.Element {
         url="/quiz/photo"
         keywords={['ラーメン', '写真クイズ', '写真当てクイズ', 'ご当地ラーメン', 'ラーメン店舗当て']}
       />
+      <StructuredData schema={structuredData} />
 
       <AdBanner slot="photo-quiz-top" size="leaderboard" />
 

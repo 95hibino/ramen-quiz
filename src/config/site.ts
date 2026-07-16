@@ -15,8 +15,18 @@ export const SITE_NAME = 'ラーメンクイズ';
 export const SITE_DEFAULT_DESCRIPTION =
   'ラーメンの歴史・地域・文化・製麺まで、奥深いラーメン知識を 4 択クイズで楽しく学ぼう。';
 
-/** デフォルト OGP 画像 (ルート相対パス)。public/ 直下に配置。 */
-export const DEFAULT_OG_IMAGE_PATH = '/og-default.svg';
+/**
+ * デフォルト OGP 画像 (ルート相対パス)。
+ *
+ * `/api/og?mode=hero` は Vercel Edge Function (`api/og.tsx`) が返す動的 PNG。
+ * 従来の `/og-default.svg` は SVG のため、一部の SNS クローラー (LINE 等) で正しく
+ * レンダリングされない懸念があった。PNG に統一することで X / Facebook / LINE /
+ * Discord など主要プラットフォームで安定表示される。
+ *
+ * 個別ページ (Result 等) はそれぞれ `<Seo ogImage="/api/og?score=..&type=.." />`
+ * で上書きするため、この値はページ側で指定しなかった時のフォールバックとなる。
+ */
+export const DEFAULT_OG_IMAGE_PATH = '/api/og?mode=hero';
 
 /**
  * 本番ドメインを含むサイトの絶対 URL。

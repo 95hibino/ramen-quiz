@@ -56,6 +56,7 @@ const STATIC_ENTRIES: ReadonlyArray<SitemapEntry> = [
   { path: '/quiz/knowledge/expert', priority: 0.8, changefreq: 'monthly' },
   { path: '/quiz/photo', priority: 0.8, changefreq: 'weekly' },
   { path: '/ranking', priority: 0.6, changefreq: 'daily' },
+  { path: '/learn', priority: 0.7, changefreq: 'weekly' },
   { path: '/about', priority: 0.5, changefreq: 'monthly' },
   { path: '/faq', priority: 0.7, changefreq: 'monthly' },
   { path: '/glossary', priority: 0.7, changefreq: 'monthly' },
