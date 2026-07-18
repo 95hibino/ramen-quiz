@@ -4,7 +4,12 @@ import { BrowserRouter } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App';
 import { injectAdsenseScript } from './lib/adsense';
+import { initSentry } from './lib/sentry';
 import './styles/index.css';
+
+// Sentry は最上部で初期化する (未捕捉例外を最初から拾えるように)。
+// VITE_SENTRY_DSN 未設定なら no-op なのでローカルでは何も起きない。
+initSentry();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

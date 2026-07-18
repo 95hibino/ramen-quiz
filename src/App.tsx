@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
+import * as Sentry from '@sentry/react';
 import { Header } from '@/components/common/Header';
 import { Footer } from '@/components/common/Footer';
 import { LoadingFallback } from '@/components/common/LoadingFallback';
 import { InstallPrompt } from '@/components/common/InstallPrompt';
 import { OfflineIndicator } from '@/components/common/OfflineIndicator';
 import { UpdatePrompt } from '@/components/common/UpdatePrompt';
+import { ErrorFallback } from '@/components/common/ErrorFallback';
 import { useAuthStore } from '@/stores/authStore';
 
 // Route-based code splitting
@@ -56,7 +58,7 @@ const RegionDetail = lazy(() =>
   import('@/pages/RegionDetail').then((m) => ({ default: m.RegionDetail })),
 );
 
-function App(): JSX.Element {
+function AppContent(): JSX.Element {
   const syncFromSession = useAuthStore((s) => s.syncFromSession);
 
   // 起動時に Supabase Auth のセッションと currentUser を同期する。
@@ -106,6 +108,21 @@ function App(): JSX.Element {
           個人特定情報は送信されず、Cookie も使用しない (プライバシー配慮)。 */}
       <Analytics />
     </div>
+  );
+}
+
+/**
+ * ルート App: Sentry.ErrorBoundary で AppContent をラップする。
+ *
+ * - React の描画中に未捕捉例外が発生した場合、ErrorFallback を表示
+ * - Sentry (DSN 設定時) にはエラー詳細が自動送信される
+ * - 未設定時も ErrorBoundary としては機能する (ホワイトスクリーン防止)
+ */
+function App(): JSX.Element {
+  return (
+    <Sentry.ErrorBoundary fallback={(props) => <ErrorFallback {...props} />}>
+      <AppContent />
+    </Sentry.ErrorBoundary>
   );
 }
 
