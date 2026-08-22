@@ -5,6 +5,7 @@
  * - 環境変数 `VITE_ADSENSE_CLIENT_ID` が設定されているときだけ実 AdSense と連携する。
  * - 未設定なら `AdBanner` 側でプレースホルダ表示を維持し、`<script>` も注入しない。
  * - スクリプトはアプリ起動時に 1 度だけ document.head に追加する（重複注入防止）。
+ *   index.html に静的な AdSense タグ（審査用サイトコード）がある場合は何もしない。
  * - `pushAdsByGoogle()` は SSR 安全のため `typeof window` で短絡する。
  *
  * 本ファイルは React に依存しないユーティリティ層。
@@ -31,7 +32,7 @@ export function isAdsenseConfigured(): boolean {
  * AdSense スクリプトを `document.head` に動的注入する。
  *
  * - `isAdsenseConfigured()` が false なら何もしない。
- * - 既に注入済み（同一 client ID）の場合も何もしない。
+ * - 既に adsbygoogle.js が存在する場合（index.html の静的タグ含む）も何もしない。
  * - SSR 環境では `document` 未定義のため早期 return。
  */
 export function injectAdsenseScript(): void {
@@ -39,8 +40,10 @@ export function injectAdsenseScript(): void {
   if (!isAdsenseConfigured()) return;
 
   const clientId = getAdsenseClientId();
+  // index.html の静的タグ (審査用サイトコード) も含めて検出する。
+  // data 属性ではなく src で判定しないと、静的タグがあるときに二重ロードになる。
   const existing = document.querySelector<HTMLScriptElement>(
-    `script[${ADSENSE_SCRIPT_DATA_ATTR}="${clientId}"]`,
+    `script[src^="${ADSENSE_SCRIPT_SRC_BASE}"], script[${ADSENSE_SCRIPT_DATA_ATTR}]`,
   );
   if (existing) return;
 

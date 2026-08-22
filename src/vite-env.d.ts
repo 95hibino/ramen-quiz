@@ -21,6 +21,8 @@ interface ImportMetaEnv {
   readonly VITE_ADSENSE_SLOT_HOME_TOP?: string;
   /** AdSense スロット ID: 知識クイズカテゴリ画面 top の Leaderboard 枠 (728×90)。 */
   readonly VITE_ADSENSE_SLOT_KNOWLEDGE_TOP?: string;
+  /** AdSense スロット ID: 写真クイズカテゴリ画面 top の Leaderboard 枠 (728×90)。 */
+  readonly VITE_ADSENSE_SLOT_PHOTO_QUIZ_TOP?: string;
   /** AdSense スロット ID: 結果画面の Medium Rectangle 枠 (300×250)。 */
   readonly VITE_ADSENSE_SLOT_RESULT?: string;
   /** AdSense スロット ID: フッターのモバイルバナー枠 (320×50)。 */

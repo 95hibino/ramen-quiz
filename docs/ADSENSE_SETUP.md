@@ -11,9 +11,9 @@ ID を環境変数に流し込むだけで広告配信を有効化できるよ�
 ```
 A. AdSense アカウント開設
 B. サイト登録 → 審査
-C. (審査通過後) 広告ユニットを 5 種類作成
+C. (審査通過後) 広告ユニットを 6 種類作成
 D. 取得した ID を .env.local に設定
-E. public/ads.txt のプレースホルダ ID を実 ID に置換
+E. public/ads.txt のパブリッシャー ID 確認 (設定済み)
 F. Vercel Dashboard にも同じ環境変数を設定
 G. デプロイ → /ads.txt と広告表示を確認
 ```
@@ -31,23 +31,26 @@ G. デプロイ → /ads.txt と広告表示を確認
 ## B. サイト登録 → 審査
 
 1. AdSense 管理画面の「サイト」→「サイトを追加」で本番ドメイン (例: `ramen-quiz.example.com`) を登録
-2. 表示される「AdSense コードをサイトに追加」は本実装では自動化済み
-   （`VITE_ADSENSE_CLIENT_ID` を設定すれば `src/lib/adsense.ts` が `<script>` を `<head>` に注入する）
-3. `index.html` への手動追記は不要
-4. 「審査をリクエスト」→ 数日〜数週間で結果通知メールが届く
+2. 表示される「AdSense コードをサイトに追加」のサイト用コードは **`index.html` に静的タグとして埋め込み済み**
+   （`ca-pub-6954101208482692`）。手動での追記は不要
+3. 「審査をリクエスト」→ 数日〜数週間で結果通知メールが届く
 
-> 審査中も `VITE_ADSENSE_CLIENT_ID` を本番に設定して構いません（プレースホルダのままだと審査に通らないため、本ステップで設定するのが標準）。
+> **なぜ静的タグなのか**: 審査ボットは JS 実行前の HTML を見るため、`src/lib/adsense.ts` の
+> 動的注入だけでは「サイトにコードが見つかりません」で審査に落ちうる。
+> 動的注入側は静的タグを検出したら何もしないので二重ロードにはならない。
+> パブリッシャー ID は `ads.txt` 同様に公開情報なのでハードコードして問題ない。
 
 ---
 
-## C. 広告ユニットを 5 種類作成
+## C. 広告ユニットを 6 種類作成
 
-審査通過後、AdSense 管理画面の「広告 > 広告ユニットごと」から下表の 5 ユニットを作成し、それぞれのスロット ID（数字列）を控えます。
+審査通過後、AdSense 管理画面の「広告 > 広告ユニットごと」から下表の 6 ユニットを作成し、それぞれのスロット ID（数字列）を控えます。
 
 | 環境変数キー                          | 配置場所                          | 推奨ユニットタイプ | 推奨サイズ          |
 | ------------------------------------- | --------------------------------- | ------------------ | ------------------- |
 | `VITE_ADSENSE_SLOT_HOME_TOP`          | ホーム上部                        | ディスプレイ広告   | 728×90 / 自動       |
 | `VITE_ADSENSE_SLOT_KNOWLEDGE_TOP`     | 知識クイズカテゴリ画面上部        | ディスプレイ広告   | 728×90 / 自動       |
+| `VITE_ADSENSE_SLOT_PHOTO_QUIZ_TOP`    | 写真クイズカテゴリ画面上部        | ディスプレイ広告   | 728×90 / 自動       |
 | `VITE_ADSENSE_SLOT_RESULT`            | 結果画面                          | ディスプレイ広告   | 300×250 (固定推奨)  |
 | `VITE_ADSENSE_SLOT_FOOTER`            | フッター                          | ディスプレイ広告   | 320×50              |
 | `VITE_ADSENSE_SLOT_IN_FEED`           | クイズプレイ中 5 問ごと           | インフィード広告   | レスポンシブ        |
@@ -69,6 +72,7 @@ G. デプロイ → /ads.txt と広告表示を確認
 VITE_ADSENSE_CLIENT_ID=ca-pub-1234567890123456
 VITE_ADSENSE_SLOT_HOME_TOP=1111111111
 VITE_ADSENSE_SLOT_KNOWLEDGE_TOP=2222222222
+VITE_ADSENSE_SLOT_PHOTO_QUIZ_TOP=2222222223
 VITE_ADSENSE_SLOT_RESULT=3333333333
 VITE_ADSENSE_SLOT_FOOTER=4444444444
 VITE_ADSENSE_SLOT_IN_FEED=5555555555
@@ -85,20 +89,12 @@ VITE_ADSENSE_SLOT_IN_FEED=5555555555
 
 ---
 
-## E. `public/ads.txt` のパブリッシャー ID 置換
+## E. `public/ads.txt` のパブリッシャー ID (設定済み)
 
-`public/ads.txt` に以下が書かれています。
-
-```
-google.com, ca-pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
-```
-
-`XXXXXXXXXXXXXXXX` の部分を、上記 D で取得した **`ca-pub-` を除いた数字列**（16 桁）に置き換えます。
-
-例: パブリッシャー ID が `ca-pub-1234567890123456` なら
+**この作業は完了済みです。** `public/ads.txt` には実パブリッシャー ID が入っています。
 
 ```
-google.com, ca-pub-1234567890123456, DIRECT, f08c47fec0942fa0
+google.com, pub-6954101208482692, DIRECT, f08c47fec0942fa0
 ```
 
 `ads.txt` は Vite の `public/` 配下に置かれているので、ビルド後は `dist/ads.txt` として自動コピーされ、本番ドメインの `/ads.txt` で配信されます。

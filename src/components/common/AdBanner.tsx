@@ -21,6 +21,7 @@ export type AdSize = 'leaderboard' | 'medium-rectangle' | 'mobile-banner' | 'res
 export type AdSlotName =
   | 'home-top'
   | 'knowledge-top'
+  | 'photo-quiz-top'
   | 'result'
   | 'footer'
   | 'in-feed'
@@ -61,6 +62,8 @@ function resolveSlotId(slot: AdSlotName): string {
       return import.meta.env.VITE_ADSENSE_SLOT_HOME_TOP ?? '';
     case 'knowledge-top':
       return import.meta.env.VITE_ADSENSE_SLOT_KNOWLEDGE_TOP ?? '';
+    case 'photo-quiz-top':
+      return import.meta.env.VITE_ADSENSE_SLOT_PHOTO_QUIZ_TOP ?? '';
     case 'result':
       return import.meta.env.VITE_ADSENSE_SLOT_RESULT ?? '';
     case 'footer':
