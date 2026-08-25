@@ -41,7 +41,7 @@ export function Home(): JSX.Element {
     <div className="space-y-8">
       <Seo
         title="トップ"
-        description="ラーメンに関する 4 択クイズ Web アプリ。基礎知識から地域文化、上級マニアックな知識まで全 150 問。写真当てクイズも遊べる無料サービス。"
+        description="ラーメンに関する 4 択クイズ Web アプリ。基礎知識から地域文化、上級マニアックな知識まで全 171 問。写真当てクイズも遊べる無料サービス。"
         url="/"
         keywords={[
           'ラーメン',

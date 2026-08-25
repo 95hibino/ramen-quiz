@@ -154,7 +154,7 @@ export const FAQ_ITEMS: ReadonlyArray<FaqItem> = [
     category: 'service',
     question: '知識クイズの問題数は？',
     answer:
-      '知識クイズは、基礎 (basic) 50 問・地域 (regional) 50 問・上級 (expert) 50 問の計 150 問を用意しています。すべての問題に解説が付いています。',
+      '知識クイズは、基礎 (basic) 50 問・地域 (regional) 50 問・上級 (expert) 71 問の計 171 問を用意しています。すべての問題に解説が付いています。',
   },
   {
     id: 'photo-submit',

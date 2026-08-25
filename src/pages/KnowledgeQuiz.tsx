@@ -25,7 +25,7 @@ export function KnowledgeQuiz(): JSX.Element {
       '@type': 'Quiz',
       name: 'ラーメン知識クイズ',
       description:
-        'ラーメンの基礎・地域・上級知識を問う全 150 問の 4 択クイズ。各カテゴリ 50 問、1 セッション 10 問・制限時間 20 秒/問。',
+        'ラーメンの基礎・地域・上級知識を問う全 171 問の 4 択クイズ。基礎・地域が各 50 問、上級が 71 問。1 セッション 10 問・制限時間 20 秒/問。',
       url: buildSiteUrl('/quiz/knowledge'),
       inLanguage: 'ja',
       learningResourceType: 'Quiz',
@@ -50,7 +50,7 @@ export function KnowledgeQuiz(): JSX.Element {
     <div className="space-y-6">
       <Seo
         title="知識クイズ"
-        description="ラーメン知識クイズ全 150 問。基礎・地域・上級の 3 カテゴリから選んで挑戦。各問題に解説付きでラーメンの歴史・文化・製麺技術が学べる。"
+        description="ラーメン知識クイズ全 171 問。基礎・地域・上級の 3 カテゴリから選んで挑戦。各問題に解説付きでラーメンの歴史・文化・製麺技術が学べる。"
         url="/quiz/knowledge"
         keywords={['ラーメンクイズ', '4択クイズ', 'ラーメン知識', 'ご当地ラーメン', 'ラーメン雑学']}
       />
