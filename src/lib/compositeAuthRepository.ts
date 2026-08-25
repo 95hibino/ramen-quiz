@@ -13,6 +13,7 @@ import { localAuthRepository } from '@/lib/localAuthRepository';
 import { supabaseAuthRepository } from '@/lib/supabaseAuthRepository';
 import type { AuthRepository } from '@/lib/authRepository';
 import type { LoginInput, SignupInput, User } from '@/types/account';
+import { AuthError } from '@/types/account';
 
 function pick(): AuthRepository {
   return isSupabaseConfigured() ? supabaseAuthRepository : localAuthRepository;
@@ -34,4 +35,32 @@ export const compositeAuthRepository: AuthRepository = {
   async listUsers(): Promise<User[]> {
     return pick().listUsers();
   },
+  /**
+   * 復旧コードは Supabase の SECURITY DEFINER 関数に依存するため、
+   * オフライン (localAuthRepository) では提供しない。
+   * 呼び出し側は `canUseRecoveryCode()` で対応可否を判定すること。
+   */
+  async issueRecoveryCode(): Promise<string> {
+    const repo = pick();
+    if (!repo.issueRecoveryCode) {
+      throw new AuthError('unknown', 'この環境では復旧コードを利用できません。');
+    }
+    return repo.issueRecoveryCode();
+  },
+  async resetPasswordWithRecoveryCode(input: {
+    username: string;
+    recoveryCode: string;
+    newPassword: string;
+  }): Promise<string> {
+    const repo = pick();
+    if (!repo.resetPasswordWithRecoveryCode) {
+      throw new AuthError('unknown', 'この環境では復旧コードを利用できません。');
+    }
+    return repo.resetPasswordWithRecoveryCode(input);
+  },
 };
+
+/** 現在の環境 (Supabase 接続済みか) で復旧コードが使えるか。 */
+export function isRecoveryCodeAvailable(): boolean {
+  return isSupabaseConfigured();
+}

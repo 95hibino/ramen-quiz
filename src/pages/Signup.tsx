@@ -13,6 +13,11 @@ import {
 } from '@/lib/validation';
 import { useAuthStore } from '@/stores/authStore';
 import { Seo } from '@/components/common/Seo';
+import { RecoveryCodePanel } from '@/components/account/RecoveryCodePanel';
+import {
+  compositeAuthRepository,
+  isRecoveryCodeAvailable,
+} from '@/lib/compositeAuthRepository';
 
 interface FormErrors {
   username?: string;
@@ -36,6 +41,14 @@ export function Signup(): JSX.Element {
   const [prefecture, setPrefecture] = useState<string>('');
   const [favoriteShop, setFavoriteShop] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+
+  /**
+   * 登録成功後に一度だけ表示する復旧コード。
+   * これが入るとフォームを畳んで復旧コード画面に切り替える。
+   */
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  /** 復旧コードの発行だけ失敗した場合の案内 (アカウント作成自体は成功している)。 */
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -66,14 +79,65 @@ export function Signup(): JSX.Element {
         prefecture: prefecture as Prefecture,
         favoriteShop: favoriteShop.trim(),
       });
-      navigate('/', { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : '登録に失敗しました。';
       setErrors({ form: message });
+      return;
+    }
+
+    // アカウント作成は成功済み。ここから先で失敗しても登録自体は取り消さない。
+    // 復旧コードはマイページからいつでも再発行できるので、案内だけ出して先へ進める。
+    if (!isRecoveryCodeAvailable()) {
+      navigate('/', { replace: true });
+      return;
+    }
+    try {
+      setRecoveryCode(await compositeAuthRepository.issueRecoveryCode!());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      setRecoveryError(
+        `アカウントは作成できましたが、復旧コードの発行に失敗しました${message ? ` (${message})` : ''}。マイページからあらためて発行してください。`,
+      );
     }
   };
 
   const isSubmitting = status === 'loading';
+
+  // 登録完了後は入力フォームを畳み、復旧コードの提示だけを行う画面に切り替える。
+  if (recoveryCode || recoveryError) {
+    return (
+      <div className="card mx-auto max-w-md space-y-5">
+        <Seo title="登録完了" description="アカウント登録が完了しました。" url="/signup" noIndex />
+        <div>
+          <h1 className="text-2xl font-black text-ramen-soy">登録が完了しました</h1>
+          <p className="mt-2 text-xs text-ramen-soy/70">
+            最後に、パスワードを忘れたとき用の復旧コードを控えてください。
+          </p>
+        </div>
+        {recoveryCode ? (
+          <RecoveryCodePanel
+            code={recoveryCode}
+            title="復旧コード（この画面でのみ表示されます）"
+            confirmLabel="控えたので始める"
+            onConfirm={() => navigate('/', { replace: true })}
+          />
+        ) : (
+          <>
+            <p className="rounded-lg bg-ramen-chili/10 px-3 py-2 text-sm font-bold text-ramen-chili">
+              {recoveryError}
+            </p>
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={() => navigate('/', { replace: true })}
+            >
+              ホームへ
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="card mx-auto max-w-md space-y-5">
@@ -95,6 +159,7 @@ export function Signup(): JSX.Element {
           id="signup-username"
           label={`ユーザー名 (${USERNAME_MIN}-${USERNAME_MAX}字)`}
           error={errors.username}
+          hint="英数字・ひらがな・カタカナ・漢字と _ - が使えます。他の人と同じ名前は登録できません (大文字小文字・全角半角は区別しません)。"
         >
           <input
             id="signup-username"
@@ -184,17 +249,23 @@ interface FormFieldProps {
   id: string;
   label: string;
   error?: string;
+  /** 入力欄の下に出す補足説明 (入力規則など)。エラー表示中は隠す。 */
+  hint?: string;
   children: React.ReactNode;
 }
 
-function FormField({ id, label, error, children }: FormFieldProps): JSX.Element {
+function FormField({ id, label, error, hint, children }: FormFieldProps): JSX.Element {
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="block text-sm font-bold text-ramen-soy">
         {label}
       </label>
       {children}
-      {error ? <p className="text-xs font-bold text-ramen-chili">{error}</p> : null}
+      {error ? (
+        <p className="text-xs font-bold text-ramen-chili">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-ramen-soy/70">{hint}</p>
+      ) : null}
     </div>
   );
 }

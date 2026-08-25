@@ -43,9 +43,9 @@ Windows + PowerShell 想定。Bash/WSL を使う場合は適宜読み替えて�
 ### 1. ディレクトリを丸ごとコピー
 
 ```powershell
-# 切り出し先 (例: C:\Users\hibino\CC\ramen-quiz-publish\)
+# 切り出し先 (例: C:\release\ramen_quiz\)
 $src  = 'C:\Users\hibino\CC\LifePlanning\shacho\engineering\output\ramen_quiz'
-$dest = 'C:\Users\hibino\CC\ramen-quiz-publish'
+$dest = 'C:\release\ramen_quiz'
 
 # 既存があれば消す (一度きりの初回作業のみ)
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
@@ -151,7 +151,7 @@ git commit -m "..."
 
 # 2. 公開先に robocopy で同期 (上記 B-1 と同じコマンド)
 $src  = 'C:\Users\hibino\CC\LifePlanning\shacho\engineering\output\ramen_quiz'
-$dest = 'C:\Users\hibino\CC\ramen-quiz-publish'
+$dest = 'C:\release\ramen_quiz'
 robocopy $src $dest /MIR /XD node_modules dist .vite .turbo .vercel .git /XF .env .env.local .env.*.local *.tsbuildinfo
 
 # 3. 公開先でコミット & push
@@ -163,6 +163,34 @@ git push
 ```
 
 > **重要**: 上記の `/XD .git` がないと、コピー先の `.git/` が **コピー元の空状態に上書きされて履歴消失** する。必ず除外すること。
+
+### /MIR を流す前に必ず確認すること
+
+LifePlanning 側と公開リポジトリ側は **双方向に乖離しうる**。`/MIR` は「コピー元にない
+ファイルをコピー先から削除する」ため、確認せずに流すと公開側の変更が消える。
+
+事前に必ず差分を取る:
+
+```powershell
+diff -rq $src $dest -x node_modules -x dist -x .git -x .env.local -x '*.tsbuildinfo'
+```
+
+過去に実際に起きた乖離:
+
+| ファイル                        | 乖離の内容                                                          |
+| ------------------------------- | ------------------------------------------------------------------- |
+| `package.json` / `package-lock` | Vercel ビルド修正のため公開側で `@sentry/react` を上げていた（公開側が新しい） |
+| `src/data/rakuten_affiliates.txt` | 社長がアフィリエイト HTML を公開側に直接置いている（コピー元に存在しない） |
+
+**公開側が新しい / 公開側にしかないファイルがある場合は、先に LifePlanning 側へ取り込んでから同期する。**
+
+### push 漏れの確認
+
+コミットしただけで push を忘れると本番に出ない。同期後は必ず確認する:
+
+```powershell
+git -C C:eleaseamen_quiz log --oneline origin/main..HEAD   # 空なら push 済み
+```
 
 ### 方式 2: スクリプト化 (運用が安定したら)
 

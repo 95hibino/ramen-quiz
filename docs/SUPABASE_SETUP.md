@@ -1354,8 +1354,10 @@ CREATE POLICY "public_storage_insert" ON storage.objects
 - 未ログインユーザー (`anon`) も引き続きアップロード可能 (元設計と互換)
 - UPDATE / DELETE ポリシーは未作成のままなので改ざん・削除は不可
 - 既存の CHECK 制約 (バケット MIME・サイズ、DB CHECK) とレート制限トリガーは維持
-- 詳細な詐称対策 (submitter_id = auth.uid() 強制など) は将来 SECURITY DEFINER 関数化して
-  §13 / §15 と同じ方式に統一する予定 (現状はフロント検証 + レート制限で抑制)
+- ~~詳細な詐称対策 (submitter_id = auth.uid() 強制など) は将来 SECURITY DEFINER 関数化して
+  §13 / §15 と同じ方式に統一する予定 (現状はフロント検証 + レート制限で抑制)~~
+  → **§24 で解消済み**。INSERT ポリシー側で `submitter_id = auth.uid() のユーザー名` を
+  強制する方式を採り、関数化は不要になった。この節の `WITH CHECK (true)` は §24 で破棄される
 
 ## §18 通報機能の RLS を authenticated 対応に (§17 と同じパッチ)
 
@@ -1738,3 +1740,823 @@ DELETE FROM reporter_blocks WHERE reporter_id = '<user_uuid>';
 4. アカウント A で `/quiz/photo` にアクセス → ブロック画面が表示され、プレイできない
 5. 社長が SQL で `DELETE FROM reporter_blocks WHERE reporter_id = '<a_uuid>';`
 6. アカウント A で `/quiz/photo` → 再度プレイ可能
+
+---
+
+## §21 ユーザー名の一意性を DB で保証する
+
+### 背景: 何が守られていて、何が守られていなかったか
+
+Phase 3 (§11) 以降、ユーザー名は `sha256(usernameKey)` から作った fake email として
+`auth.users.email` に入る。email は Supabase Auth 側で UNIQUE なので、
+**同じユーザー名での新規登録は結果的に弾かれていた**。
+
+ただし次の穴が残っていた:
+
+| 穴 | 何が起きるか |
+|---|---|
+| `public_profiles.username` に一意制約が無い | `create_public_profile` を直接叩けば他人と同名のプロフィールを作れる |
+| `isUsernameTaken` の `ilike` が `_` をワイルドカード扱い | `a_b` が `axb` にマッチし「使われていない名前を使用中」と誤判定 |
+| 事前チェックと登録の間に race | 同時登録で両方が事前チェックを通過し得た (最終的には Auth 側で片方が失敗) |
+| 正規化のズレ | `ＲＡＭＥＮ` と `ramen` は Auth では同一、`public_profiles` では別扱い |
+
+`username` は写真投稿の `submitter_id` にも使われる (`SubmissionsSection`) ため、
+重複すると**投稿履歴が混ざる**。DB 側で一意にしておく必要がある。
+
+### ユーザー名の規則 (確定)
+
+| 項目 | 規則 |
+|---|---|
+| 長さ | **3〜20 文字** (前後空白を除去し NFKC 正規化した後の文字数) |
+| 使用可能 | 半角英数字 `A-Z a-z 0-9`、`_`、`-`、ひらがな、カタカナ (長音符 `ー`・`ヶ` を含む)、漢字、`々` `〆` `〇` |
+| 使用不可 | 空白、`_` `-` 以外の記号、絵文字、制御文字 |
+| 正規化 | 前後空白除去 → **NFKC** → その値を保存 (全角英数は半角に、半角カナは全角に畳まれる) |
+| 一意性 | `lower(NFKC(username))` で一意。**大文字小文字・全角半角を区別しない** |
+| 予約語 | `_shacho` `admin` `administrator` `root` `support` `official` `system` `運営` `管理者` |
+| 変更 | **不可** (fake email の材料なので、変更するとログインできなくなる) |
+
+フロント側の実装は `src/lib/validation.ts` の `validateUsername` / `normalizeUsername` /
+`usernameKey` が単一のソースオブトゥルース。`fakeEmail.ts` と `localAuthRepository.ts` も
+この 3 関数を経由するので、規則を変えるときは `validation.ts` だけを直せばよい。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- 1. 既存の重複を洗い出す (行が返ったら先に手当てが必要)
+-- ==========================================
+SELECT lower(normalize(username, NFKC)) AS username_key,
+       count(*) AS n,
+       array_agg(id) AS ids
+FROM public_profiles
+GROUP BY 1
+HAVING count(*) > 1;
+-- ↑ 行が返る場合は、どれを残すか決めて他方の username を変更するか行を削除してから次へ。
+--   (例) UPDATE public_profiles SET username = username || '2' WHERE id = '<残さない方のid>';
+
+-- ==========================================
+-- 2. 既存行の保存値を NFKC 正規化に揃える
+-- ==========================================
+UPDATE public_profiles
+SET username = btrim(normalize(username, NFKC))
+WHERE username IS DISTINCT FROM btrim(normalize(username, NFKC));
+
+-- ==========================================
+-- 3. 一意インデックスを張る (これが本丸)
+--    normalize() も lower() も IMMUTABLE なので式インデックスに使える。
+-- ==========================================
+DROP INDEX IF EXISTS idx_public_profiles_username_lower;   -- 非一意の旧インデックスを置換
+CREATE UNIQUE INDEX IF NOT EXISTS uq_public_profiles_username_key
+  ON public_profiles (lower(normalize(username, NFKC)));
+
+-- ==========================================
+-- 4. 長さ制約をフロント (3〜20) に合わせる
+--    先に違反行が無いことを確認すること。行が返るなら 3 文字未満/21 文字以上の
+--    レガシー行があるので、先に UPDATE で直す。
+-- ==========================================
+SELECT id, username, char_length(username) AS len
+FROM public_profiles
+WHERE char_length(username) NOT BETWEEN 3 AND 20;
+
+ALTER TABLE public_profiles DROP CONSTRAINT IF EXISTS public_profiles_username_check;
+ALTER TABLE public_profiles ADD CONSTRAINT public_profiles_username_check
+  CHECK (char_length(username) BETWEEN 3 AND 20);
+
+-- ==========================================
+-- 5. create_public_profile を差し替え
+--    - 保存前に NFKC 正規化
+--    - 3〜20 文字を強制 (フロントと多重防御)
+--    - 他人が同じキーの名前を持っていたら username_taken を投げる
+--    - 一意インデックス違反 (23505) も username_taken に翻訳する
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.create_public_profile(
+  p_username TEXT,
+  p_prefecture TEXT,
+  p_favorite_shop TEXT
+) RETURNS public_profiles
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   TEXT;
+  v_name  TEXT;
+  v_key   TEXT;
+  new_row public_profiles;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  -- フロントと同じ正規化 (trim → NFKC)。保存する値そのものを畳む。
+  v_name := btrim(normalize(coalesce(p_username, ''), NFKC));
+  v_key  := lower(v_name);
+
+  IF char_length(v_name) < 3 OR char_length(v_name) > 20 THEN
+    RAISE EXCEPTION 'invalid_username: length must be 3-20';
+  END IF;
+  IF p_prefecture IS NULL OR char_length(p_prefecture) < 2 OR char_length(p_prefecture) > 8 THEN
+    RAISE EXCEPTION 'invalid_prefecture: length must be 2-8';
+  END IF;
+  IF p_favorite_shop IS NULL
+     OR char_length(btrim(p_favorite_shop)) < 1
+     OR char_length(p_favorite_shop) > 100 THEN
+    RAISE EXCEPTION 'invalid_favorite_shop: length must be 1-100';
+  END IF;
+
+  -- 予約語 (フロントの RESERVED_USERNAMES と同じ内容を維持すること)
+  IF v_key IN ('_shacho','admin','administrator','root','support','official','system','運営','管理者')
+     AND v_key <> '_shacho' THEN
+    RAISE EXCEPTION 'reserved_username';
+  END IF;
+
+  -- 自分以外が同じキーを既に使っていないか (分かりやすいエラーのための事前判定)
+  IF EXISTS (
+    SELECT 1 FROM public_profiles
+    WHERE lower(normalize(username, NFKC)) = v_key
+      AND id <> v_uid
+  ) THEN
+    RAISE EXCEPTION 'username_taken';
+  END IF;
+
+  INSERT INTO public_profiles (id, username, prefecture, favorite_shop)
+  VALUES (v_uid, v_name, p_prefecture, btrim(p_favorite_shop))
+  ON CONFLICT (id) DO UPDATE
+    SET username = EXCLUDED.username,
+        prefecture = EXCLUDED.prefecture,
+        favorite_shop = EXCLUDED.favorite_shop,
+        updated_at = NOW()
+  RETURNING * INTO new_row;
+
+  RETURN new_row;
+
+EXCEPTION
+  -- 事前判定をすり抜けた同時実行 (race) は一意インデックスが弾く。
+  -- そのままだと 23505 の生メッセージが出るので username_taken に翻訳する。
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'username_taken';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_public_profile(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.create_public_profile(TEXT, TEXT, TEXT) TO authenticated;
+```
+
+> **`_shacho` の扱い**: 予約語チェックで `_shacho` だけ除外しているのは、社長が管理者
+> アカウントとして実際に profile を作れるようにするため。一般ユーザーはフロントの
+> `validateUsername` で `_shacho` を弾かれるので、この抜け道には到達しない。
+
+### 確認方法
+
+1. アカウント A を `Ramen_Taro` で作成 → 成功
+2. 別ブラウザで `ramen_taro` を登録しようとする → 「このユーザー名は既に使われています。」
+3. 同じく `Ｒａｍｅｎ＿Ｔａｒｏ` (全角) で登録 → 同じく弾かれる (NFKC で畳まれるため)
+4. `a_b` のようにアンダースコアを含む名前が未使用なら登録できる (ilike 誤判定の修正確認)
+5. `admin` で登録 → 「このユーザー名は予約されているため使用できません。」
+6. 2 文字 / 21 文字で登録 → フロントで弾かれる
+7. SQL Editor で一意インデックスの効きを直接確認:
+   ```sql
+   -- 既存ユーザーと同じキーで別 id を差し込もうとすると 23505 で失敗するはず
+   INSERT INTO public_profiles (id, username, prefecture, favorite_shop)
+   VALUES ('test-dup', '<既存と同じ名前>', '東京都', 'テスト');
+   ```
+   → `duplicate key value violates unique constraint "uq_public_profiles_username_key"`
+   (確認後 `DELETE FROM public_profiles WHERE id = 'test-dup';` で掃除)
+
+---
+
+## §22 出題時の作成者名表示 (投稿者のオプトイン)
+
+写真当てクイズの出題画面に「作成者: ○○さん」を表示する機能。
+**表示は投稿者が明示的に選んだときだけ**行い、既定は非公開とする。
+
+### 何を足すか
+
+`user_photo_questions` に `show_submitter BOOLEAN NOT NULL DEFAULT false` を追加するだけ。
+表示名そのものは既存の `submitter_id` (= ユーザー名) を流用する。
+
+- **既定 false**: 既存の投稿はすべて非公開のまま。過去の投稿者は公開に同意していないため、
+  後から一括で true にしてはいけない。
+- 一括投入スクリプト (`upload_photo_quiz_to_supabase.py`) はこの列を送らないので、
+  社長が投入した問題も DEFAULT の false = 非公開になる (`_shacho` が表に出ない)。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+ALTER TABLE user_photo_questions
+  ADD COLUMN IF NOT EXISTS show_submitter BOOLEAN NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN user_photo_questions.show_submitter IS
+  '出題時に submitter_id を作成者名として表示してよいか。投稿者のオプトイン。既定は非公開。';
+```
+
+### フロント側の対応 (実装済み)
+
+| 場所 | 内容 |
+|---|---|
+| `types/photoQuestion.ts` | `PhotoQuestion.submitterName?: string` を追加 |
+| `lib/photoQuestionRepository.ts` | `PhotoQuestionSubmission` から `submitterName` を除外し、`showSubmitter: boolean` を追加 |
+| `lib/supabasePhotoQuestionRepository.ts` | `show_submitter === true` のときだけ `submitterName` に `submitter_id` を載せる。`select('*')` を明示列指定 `SELECT_COLUMNS` に変更 |
+| `pages/PhotoSubmit.tsx` | 「出題時に作成者としてユーザー名を表示する」チェックボックス (既定 OFF) |
+| `components/quiz/PhotoQuizCard.tsx` | `submitterName` があるときだけ画像の下に「作成者: ○○ さん」を描画 |
+
+公開可否の判定はリポジトリ層で完結しており、表示側は `submitterName` の有無しか見ない。
+非公開の投稿者名が UI に出る経路は構造上作れない。
+
+### ⚠️ 残っていた限界: `submitter_id` 自体は API から読める → **§24 で解消済み**
+
+> **この節の内容は §24 適用前の状態を説明したもの。**
+> §24 で公開ビュー `public_photo_questions` に一本化し、
+> `show_submitter = false` の `submitter_id` は API からも `null` しか返らなくなった。
+> 下記の「選択肢 2 (ビュー経由)」を採用した形。経緯として残す。
+
+`user_photo_questions` の SELECT ポリシーは `FOR SELECT TO public USING (true)` で
+**行全体**を公開しているため、`show_submitter = false` でも、Anon Key を使って
+PostgREST を直接叩けば `submitter_id` を読み出せる。これは今回の変更で生じたものではなく、
+写真投稿機能の当初からの状態。
+
+つまり `show_submitter` が保証するのは **「アプリの画面に出さない」ところまで**であり、
+「誰にも知られない」ことまでは保証しない。投稿フォームの文言もその範囲で書いてある
+(「出題されたときに表示されます」)。
+
+本当に隠したい場合は、次のいずれかが必要になる (未実施):
+
+1. **列レベル権限**: `REVOKE SELECT (submitter_id) ON user_photo_questions FROM anon, authenticated;`
+   ただしマイページの投稿履歴が `submitter_id` で絞り込んでいるため、
+   `auth.uid()` からユーザー名を引く SECURITY DEFINER 関数に置き換える必要がある。
+2. **ビュー経由に一本化**: `show_submitter` が true のときだけ `submitter_id` を返すビューを作り、
+   ベーステーブルへの直接 SELECT を止める。
+
+どちらもマイページ・通報機能に影響が及ぶため、必要になった時点で別タスクとして扱う。
+
+### 確認方法
+
+1. 上の SQL を実行
+2. `/quiz/photo/submit` を開く → 「作成者名の表示」セクションが出ており、既定でチェックが外れている
+3. チェックを**入れずに**投稿 → `/quiz/photo/play` で出題 → 作成者名が表示されない
+4. チェックを**入れて**投稿 → 出題時に画像の下へ「作成者: <自分のユーザー名> さん」が表示される
+5. Table Editor で `show_submitter` が期待どおり false / true になっていること
+6. 既存の投稿・社長が一括投入した問題では作成者名が出ないこと
+
+---
+
+## §23 復旧コードによるパスワード再設定 (メールアドレス不要)
+
+本サービスはメールアドレスを取得しないため、従来はパスワードを忘れると復旧手段が無かった。
+§21 でユーザー名を一意にしたことで「同じ名前で作り直す」逃げ道も塞がったため、
+**登録時に一度だけ表示する復旧コード**でパスワードを再設定できるようにする。
+
+個人情報を増やさずに復旧手段を用意することが狙い (社長判断 2026-08-25)。
+
+### 設計の要点
+
+| 論点 | 決めたこと |
+|---|---|
+| コードの生成場所 | **サーバ (Postgres)**。クライアントに生成させると弱いコードを作られる余地が残る |
+| コードの強度 | 32 文字のアルファベットから 20 文字 = **100 bit**。総当たりは非現実的 |
+| 使う文字 | `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`。読み間違いを避けるため 0,1,I,O を除外 |
+| 保存形式 | **bcrypt ハッシュのみ**。平文は発行時に一度返すだけで DB には残さない |
+| 保存場所 | 専用テーブル `account_recovery`。**RLS を有効化してポリシーを1つも作らない** = クライアントからは読めない |
+| なぜ public_profiles に置かないか | あのテーブルはランキング用に**全世界から SELECT 可能**。ハッシュを置くとオフライン総当たりの材料になる |
+| 使い切り | 再設定に成功したら**新しいコードを発行して返す**。古いコードは無効になる |
+| 総当たり対策 | 失敗 5 回で 15 分ロック。成功でカウンタをリセット |
+| セッション | 再設定時に既存セッションを破棄し、全端末で再ログインを要求する |
+
+### 承知しておくべきトレードオフ
+
+パスワード変更のため **`auth.users.encrypted_password` を直接 UPDATE する**。
+Supabase Auth (GoTrue) は bcrypt で検証するので `crypt(pw, gen_salt('bf'))` で整合するが、
+これは Supabase が公式に案内している経路ではない。将来 GoTrue のハッシュ方式が変わった場合、
+この関数だけ追随が必要になる (パスワード再設定が急に失敗しだしたらここを疑う)。
+
+正攻法は Service Role Key を持つサーバ側 (Edge Function 等) から `auth.admin.updateUserById`
+を呼ぶことだが、本プロジェクトは「Service Role Key をホスティング側に置かない」方針 (§7)
+を採っているため、鍵を増やさない SQL 内完結の方式を選んだ。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================
+-- 1. 復旧コード保管テーブル
+--    RLS 有効 + ポリシー無し = anon / authenticated からは一切読み書きできない。
+--    アクセス経路は下の SECURITY DEFINER 関数だけに限定する。
+-- ==========================================
+CREATE TABLE IF NOT EXISTS account_recovery (
+  user_id         TEXT PRIMARY KEY REFERENCES public_profiles(id) ON DELETE CASCADE,
+  code_hash       TEXT NOT NULL,
+  failed_attempts INT NOT NULL DEFAULT 0,
+  locked_until    TIMESTAMPTZ,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE account_recovery ENABLE ROW LEVEL SECURITY;
+-- ポリシーは意図的に作らない (Postgres の RLS は「ポリシーが無い操作は拒否」が既定)
+
+-- ==========================================
+-- 2. 復旧コードを生成する内部関数
+--    0,1,I,O を除いた 32 文字から 20 文字。256 は 32 で割り切れるので剰余バイアスなし。
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.generate_recovery_code()
+RETURNS TEXT
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = public
+AS $fn$
+DECLARE
+  v_alphabet CONSTANT TEXT := '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  v_bytes    BYTEA;
+  v_code     TEXT := '';
+  i          INT;
+BEGIN
+  v_bytes := extensions.gen_random_bytes(20);
+  FOR i IN 0..19 LOOP
+    v_code := v_code || substr(v_alphabet, (get_byte(v_bytes, i) % 32) + 1, 1);
+  END LOOP;
+  -- 4 文字ずつ区切って読みやすくする (照合時は区切りを無視する)
+  RETURN substr(v_code, 1, 4)  || '-' || substr(v_code, 5, 4)  || '-' ||
+         substr(v_code, 9, 4)  || '-' || substr(v_code, 13, 4) || '-' || substr(v_code, 17, 4);
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.generate_recovery_code() FROM PUBLIC;
+
+-- ==========================================
+-- 3. 入力された復旧コードの正規化 (大文字化 + 区切り除去)
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.normalize_recovery_code(p_code TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $fn$
+  SELECT regexp_replace(upper(coalesce(p_code, '')), '[^0-9A-Z]', '', 'g');
+$fn$;
+
+-- ==========================================
+-- 4. ログイン中ユーザーに復旧コードを発行する
+--    サインアップ直後と、マイページからの再発行の両方で使う。
+--    戻り値は平文コード。この 1 回しか取得できない。
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.issue_recovery_code()
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_uid  TEXT;
+  v_code TEXT;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public_profiles WHERE id = v_uid) THEN
+    RAISE EXCEPTION 'profile_not_found';
+  END IF;
+
+  v_code := public.generate_recovery_code();
+
+  INSERT INTO account_recovery (user_id, code_hash, failed_attempts, locked_until, updated_at)
+  VALUES (v_uid,
+          extensions.crypt(public.normalize_recovery_code(v_code), extensions.gen_salt('bf')),
+          0, NULL, NOW())
+  ON CONFLICT (user_id) DO UPDATE
+    SET code_hash = EXCLUDED.code_hash,
+        failed_attempts = 0,
+        locked_until = NULL,
+        updated_at = NOW();
+
+  RETURN v_code;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_recovery_code() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.issue_recovery_code() TO authenticated;
+
+-- ==========================================
+-- 5. 復旧コードでパスワードを再設定する (未ログインから呼ぶ)
+--    戻り値は新しい復旧コード。古いコードはこの時点で無効。
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.reset_password_with_recovery_code(
+  p_username     TEXT,
+  p_code         TEXT,
+  p_new_password TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_uid      TEXT;
+  v_rec      account_recovery%ROWTYPE;
+  v_input    TEXT;
+  v_new_code TEXT;
+BEGIN
+  IF p_new_password IS NULL OR char_length(p_new_password) < 8 THEN
+    RAISE EXCEPTION 'invalid_password';
+  END IF;
+
+  -- ユーザー名は §21 と同じキー (trim + NFKC + 小文字) で引く
+  SELECT id INTO v_uid
+  FROM public_profiles
+  WHERE lower(normalize(username, NFKC)) = lower(btrim(normalize(coalesce(p_username,''), NFKC)));
+
+  -- 存在しないユーザー名でも、コード誤りと同じエラーを返す (ユーザー名の存在を漏らさない)
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'invalid_recovery_code';
+  END IF;
+
+  SELECT * INTO v_rec FROM account_recovery WHERE user_id = v_uid FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invalid_recovery_code';
+  END IF;
+
+  IF v_rec.locked_until IS NOT NULL AND v_rec.locked_until > NOW() THEN
+    RAISE EXCEPTION 'recovery_locked:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_rec.locked_until - NOW())))::INT);
+  END IF;
+
+  v_input := public.normalize_recovery_code(p_code);
+
+  IF v_rec.code_hash <> extensions.crypt(v_input, v_rec.code_hash) THEN
+    UPDATE account_recovery
+      SET failed_attempts = failed_attempts + 1,
+          locked_until = CASE WHEN failed_attempts + 1 >= 5
+                              THEN NOW() + INTERVAL '15 minutes' ELSE locked_until END,
+          updated_at = NOW()
+      WHERE user_id = v_uid;
+    RAISE EXCEPTION 'invalid_recovery_code';
+  END IF;
+
+  -- 照合成功。GoTrue は bcrypt で検証するので同じ方式でハッシュを差し替える。
+  UPDATE auth.users
+    SET encrypted_password = extensions.crypt(p_new_password, extensions.gen_salt('bf')),
+        updated_at = NOW()
+    WHERE id = v_uid::uuid;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'profile_not_found';
+  END IF;
+
+  -- 全端末のセッションを破棄して再ログインを強制する (盗まれたセッション対策)
+  BEGIN
+    DELETE FROM auth.refresh_tokens WHERE user_id = v_uid;
+    DELETE FROM auth.sessions WHERE user_id = v_uid::uuid;
+  EXCEPTION WHEN undefined_table OR undefined_column THEN
+    NULL;  -- GoTrue のバージョン差で存在しない場合は無視 (パスワード変更自体は成立)
+  END;
+
+  -- 使い切りにするため新しいコードを発行して返す
+  v_new_code := public.generate_recovery_code();
+  UPDATE account_recovery
+    SET code_hash = extensions.crypt(public.normalize_recovery_code(v_new_code), extensions.gen_salt('bf')),
+        failed_attempts = 0,
+        locked_until = NULL,
+        updated_at = NOW()
+    WHERE user_id = v_uid;
+
+  RETURN v_new_code;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.reset_password_with_recovery_code(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.reset_password_with_recovery_code(TEXT, TEXT, TEXT) TO anon, authenticated;
+```
+
+### 既存ユーザーへの移行
+
+`account_recovery` に行が無いユーザーは、この時点では復旧コードを持っていない。
+**マイページの「復旧コード」セクションから発行してもらう**運用とする (`issue_recovery_code` を呼ぶだけ)。
+既存ユーザーに勝手に発行しても本人に渡す手段が無いため、自動生成はしない。
+
+### フロント側の対応 (実装済み)
+
+| 場所 | 内容 |
+|---|---|
+| `lib/authRepository.ts` | `issueRecoveryCode?` / `resetPasswordWithRecoveryCode?` を任意メソッドとして追加 |
+| `lib/supabaseAuthRepository.ts` | 上記 2 つの RPC 呼び出しと、Postgres 側エラーの日本語化 |
+| `components/account/RecoveryCodePanel.tsx` | コードの表示・コピー・「控えた」チェックの共通 UI |
+| `pages/Signup.tsx` | 登録成功直後にコードを 1 回だけ表示。控えるまで先へ進めない |
+| `pages/PasswordReset.tsx` | `/password-reset`。ユーザー名 + 復旧コード + 新パスワード |
+| `pages/Login.tsx` | 「パスワードをお忘れの方」リンク |
+| `components/mypage/RecoverySection.tsx` | 既存ユーザー向けの発行・再発行 |
+
+### 確認方法
+
+1. 上の SQL を実行
+2. 新規サインアップ → 完了画面に 24 桁 (区切り含む) の復旧コードが 1 回だけ表示される
+3. Table Editor → `account_recovery` に行が増え、`code_hash` が `$2a$...` の bcrypt 形式であること
+4. ログアウト → `/password-reset` でユーザー名 + 復旧コード + 新パスワードを入力 → 成功
+5. 成功画面に新しい復旧コードが表示されること
+6. 新パスワードでログインできること。旧パスワードではログインできないこと
+7. 手順 4 で使った古いコードをもう一度使う → 「復旧コードが正しくありません」
+8. わざと 5 回間違える → 「しばらく時間をおいてから」とロック表示
+9. アプリの Anon Key からは `account_recovery` が RLS で 0 件になること
+   (SQL Editor の社長操作では見える)
+
+
+---
+
+## §24 `submitter_id` のなりすまし防止と露出遮断 (§17 / §22 の残課題を解消)
+
+§17 の末尾に「詳細な詐称対策は将来 SECURITY DEFINER 関数化して統一する予定」と書き、
+§22 の末尾に「`submitter_id` 自体は API から読める」と書いた 2 つの残課題を、まとめて塞ぐ。
+
+### 背景: 塞ぐべき 2 つの穴
+
+**穴 1 — なりすまし (書き込み側)**
+
+§17 で作った INSERT ポリシーは `WITH CHECK (true)` だった。
+つまり Anon Key さえあれば、PostgREST を直接叩いて `submitter_id` に**任意の文字列**を
+入れて投稿できる。とくに `submitter_id = '_shacho'` を名乗ると、
+§9 のレート制限バイパス (`IF NEW.submitter_id = '_shacho' THEN RETURN NEW`) に乗ってしまい、
+**5 分に 1 件の制限を無効化して無制限に連投できる**。
+`_shacho` という文字列はフロントの `RESERVED_USERNAMES` 経由で JS バンドルに含まれるため、
+バンドルを読めば誰でも気づける。ここが最も実害の大きい穴。
+
+**穴 2 — 露出 (読み取り側)**
+
+SELECT ポリシーが `USING (true)` で**行全体**を返すため、`show_submitter = false` の投稿でも
+PostgREST を直接叩けば `submitter_id` (= ユーザー名) が読めた。
+`show_submitter` が守っていたのは「アプリの画面に出さない」ところまでで、
+「誰にも知られない」ことは保証していなかった。
+
+### 方針
+
+| | 対策 |
+|---|---|
+| 書き込み | INSERT を `TO authenticated` に限定し、`submitter_id` が **`auth.uid()` から引いたユーザー名と一致すること**を DB 側で強制する |
+| 読み取り | ベーステーブルの公開 SELECT を止め、**マスク済みビュー `public_photo_questions`** 経由に一本化する。自分の投稿だけはベーステーブルから直接読める |
+
+**UX の後退はない**。`PhotoSubmit.tsx` は以前からログイン必須
+(未ログインなら `/login?redirect=/quiz/photo/submit` へ飛ばす) で、
+匿名投稿の導線はそもそも存在しない。フロントが既にやっていたことを、
+サーバ側でも保証するだけの変更になる。
+
+### 前提
+
+以下が適用済みであること。未適用なら先にそちらを実行する。
+
+- **§22** — `show_submitter` 列 (ビューの `CASE` で使う)
+- **§20** — `is_hidden` 列 (ビューの `WHERE` で使う)
+- **§21** — `public_profiles.username` の一意インデックス
+  (INSERT ポリシーが `auth.uid()` → username の一意な対応を前提にするため)
+
+確認クエリ:
+
+```sql
+SELECT
+  to_regclass('public.user_photo_questions')                                   AS tbl,
+  (SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_name = 'user_photo_questions' AND column_name = 'show_submitter') AS has_show_submitter,
+  (SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_name = 'user_photo_questions' AND column_name = 'is_hidden')      AS has_is_hidden;
+```
+
+`tbl` が非 NULL、`has_show_submitter` と `has_is_hidden` が両方 `1` なら OK。
+
+### 実行前後に見るポリシー状態の確認クエリ
+
+SQL が途中で失敗したときに「ポリシーが全部消えて誰も投稿できない」状態になっていないかを見る。
+
+```sql
+SELECT tablename, policyname, cmd, roles
+FROM pg_policies
+WHERE tablename = 'user_photo_questions'
+ORDER BY cmd, policyname;
+```
+
+- **実行前**: `public_photo_questions_select` (SELECT) と `public_photo_questions_insert` (INSERT) の 2 行
+- **実行後**: `photo_questions_select_own` (SELECT) と `photo_questions_insert_own` (INSERT) の 2 行
+- **0 行のとき**: DROP だけが通って CREATE が失敗した状態。RLS 有効かつポリシー無し =
+  一般ユーザーからは読み書きとも全拒否になる。下の SQL をもう一度流せば復旧する
+  (`DROP POLICY IF EXISTS` を先頭に入れてあるので、何度実行しても安全)
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================================
+-- 段階 1: なりすまし防止 (INSERT を本人のユーザー名に固定)
+-- ==========================================================
+-- §17 で作った WITH CHECK (true) を破棄する。
+DROP POLICY IF EXISTS "public_photo_questions_insert" ON user_photo_questions;
+DROP POLICY IF EXISTS "anon_insert" ON user_photo_questions;
+-- 途中で失敗した場合に何度でも流し直せるよう、新ポリシー名も先に落としておく。
+DROP POLICY IF EXISTS "photo_questions_insert_own" ON user_photo_questions;
+
+-- submitter_id は「ログイン中のユーザーのユーザー名」以外を受け付けない。
+--   - プロフィール未作成 (サブクエリが NULL) → 比較結果が NULL → 拒否
+--   - 未ログイン (anon ロール) → ポリシー自体が適用されない → 拒否
+-- これにより '_shacho' を名乗ることもできなくなり、§9 のレート制限バイパスは
+-- Service Role Key を持つ社長のスクリプト (RLS を迂回する) からしか使えなくなる。
+--
+-- ⚠️ `auth.uid()::text` のキャストは必須。`public_profiles.id` は Phase 2 の名残で
+--    UUID 型ではなく **TEXT 型** (クライアント生成 UUID を文字列で保存していた) のため、
+--    キャストを外すと `ERROR: 42883: operator does not exist: text = uuid` になる。
+--    §11 以降の他のポリシー・関数もすべて `auth.uid()::text` で統一されている。
+CREATE POLICY "photo_questions_insert_own" ON user_photo_questions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    submitter_id = (SELECT p.username FROM public_profiles p WHERE p.id = auth.uid()::text)
+  );
+
+-- Storage も揃える。DB INSERT がログイン必須になった以上、
+-- 匿名アップロードを許すと「本文のないゴミ画像」だけを置ける穴が残る。
+DROP POLICY IF EXISTS "public_storage_insert" ON storage.objects;
+DROP POLICY IF EXISTS "anon_storage_insert" ON storage.objects;
+DROP POLICY IF EXISTS "authenticated_storage_insert" ON storage.objects;
+
+CREATE POLICY "authenticated_storage_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'photo-quiz-user');
+
+-- ==========================================================
+-- 段階 2: 露出遮断 (公開読み取りをマスク済みビューに一本化)
+-- ==========================================================
+-- 2-1. ベーステーブルの「全行公開」SELECT を破棄し、自分の投稿だけに絞る。
+DROP POLICY IF EXISTS "public_photo_questions_select" ON user_photo_questions;
+DROP POLICY IF EXISTS "anon_select" ON user_photo_questions;
+DROP POLICY IF EXISTS "photo_questions_select_own" ON user_photo_questions;
+
+CREATE POLICY "photo_questions_select_own" ON user_photo_questions
+  FOR SELECT TO authenticated
+  USING (
+    submitter_id = (SELECT p.username FROM public_profiles p WHERE p.id = auth.uid()::text)
+  );
+
+-- 2-2. 出題用の公開ビュー。
+--   - submitter_id は show_submitter = true のときだけ実名を返し、それ以外は NULL
+--   - is_hidden = true (通報で自動非表示化された行) は最初から出さない
+-- ビューの所有者は postgres (= ベーステーブルの所有者) なので、
+-- ビュー経由の読み取りにはベーステーブルの RLS が適用されない。
+-- これが「本人以外はビューからしか読めないのに、出題はできる」を成立させている。
+CREATE OR REPLACE VIEW public_photo_questions AS
+SELECT
+  q.id,
+  CASE WHEN q.show_submitter THEN q.submitter_id ELSE NULL END AS submitter_id,
+  q.show_submitter,
+  q.image_path,
+  q.ramen_type,
+  q.prefecture,
+  q.photo_type,
+  q.difficulty,
+  q.noodle_thickness,
+  q.question,
+  q.options,
+  q.answer_idx,
+  q.explanation,
+  q.shop_info,
+  q.created_at
+FROM user_photo_questions q
+WHERE q.is_hidden = false;
+
+-- 2-3. 権限。読み取り専用で公開する (書き込みはベーステーブルの INSERT ポリシー経由)。
+REVOKE ALL ON public_photo_questions FROM anon, authenticated;
+GRANT SELECT ON public_photo_questions TO anon, authenticated;
+
+COMMENT ON VIEW public_photo_questions IS
+  '写真クイズの公開ビュー。submitter_id は show_submitter=true のときだけ返す。'
+  'is_hidden=true の行は含まない。ベーステーブルの直接 SELECT は本人の投稿のみ (docs §24)。';
+
+-- ==========================================================
+-- 段階 3: レート制限トリガーを SECURITY DEFINER 化
+-- ==========================================================
+-- 段階 2 でベーステーブルの SELECT が「自分の行だけ」に狭まった。
+-- トリガー関数は既定で呼び出し元の権限で動くため、RLS の影響を受ける。
+-- 現状の条件 (submitter_id = 自分) では偶然そのまま動くが、
+-- 「レート制限が RLS ポリシーの書き方に依存する」状態は危うい
+-- (ポリシーを 1 行いじった瞬間に制限が無言で外れる)。
+-- SECURITY DEFINER にして、ポリシーと無関係に必ず全行を数えるようにする。
+CREATE OR REPLACE FUNCTION enforce_submit_rate_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  last_submission TIMESTAMPTZ;
+  wait_seconds    INT;
+BEGIN
+  -- 社長のバイパス。段階 1 の INSERT ポリシーにより、この分岐に到達できるのは
+  -- RLS を迂回する Service Role Key 経由の一括投入スクリプトだけになった。
+  IF NEW.submitter_id = '_shacho' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT MAX(created_at) INTO last_submission
+  FROM user_photo_questions
+  WHERE submitter_id = NEW.submitter_id;
+
+  IF last_submission IS NOT NULL
+     AND last_submission > NOW() - INTERVAL '5 minutes' THEN
+    wait_seconds := GREATEST(
+      1,
+      CEIL(EXTRACT(EPOCH FROM (last_submission + INTERVAL '5 minutes' - NOW())))::INT
+    );
+    RAISE EXCEPTION 'rate_limit_exceeded:%', wait_seconds
+      USING HINT = 'Please wait before submitting again';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+```
+
+> **PostgreSQL 15 以上の場合の補強 (任意)**: ビューが将来 `security_invoker` 既定に
+> 変わっても壊れないよう、意図を明示しておける。エラーになる版 (PG14 以前) では実行不要。
+>
+> ```sql
+> ALTER VIEW public_photo_questions SET (security_invoker = false);
+> ```
+
+### なぜビューにしたか (列レベル REVOKE との比較)
+
+§22 では選択肢を 2 つ挙げていた。今回は 2 を採った。
+
+| | 列レベル REVOKE | ビュー経由 (採用) |
+|---|---|---|
+| `REVOKE SELECT (submitter_id)` の効き方 | 全ロールで一律に読めなくなる | — |
+| `show_submitter = true` の作成者名 | **読めなくなる** → §22 の機能が死ぬので RPC を別途用意する必要がある | `CASE` でそのまま返せる |
+| マイページの投稿履歴 | `submitter_id` で絞れなくなる → SECURITY DEFINER 関数が必要 | ベーステーブルを本人限定 SELECT で読めばよい |
+| `is_hidden` の除外 | クライアントが `.eq('is_hidden', false)` を付け忘れると漏れる | ビューの `WHERE` で**構造的に**除外される |
+| 追加の関数 | 2 本必要 | 0 本 |
+
+列レベル REVOKE は「公開してよい名前まで巻き添えで隠れる」ため、
+§22 で作った機能と両立させるには結局 RPC を足すことになる。ビューなら 1 つで両方さばける。
+
+副産物として `is_hidden` のフィルタがビュー側に移り、
+クライアントの `.eq('is_hidden', false)` 付け忘れで非表示問題が出題される事故もなくなった。
+
+### 効果
+
+- `submitter_id` を偽装した投稿が **DB レベルで**拒否される (`_shacho` 詐称によるレート制限回避も不可)
+- `show_submitter = false` の投稿者名は、Anon Key で PostgREST を直接叩いても **NULL しか返らない**
+- 通報で自動非表示化された問題は、ビューの定義上そもそも出てこない
+- レート制限が RLS ポリシーの書き方から独立した (段階 3)
+- UPDATE / DELETE ポリシーは引き続き未作成 = 拒否のまま
+
+### 残る前提 (これは仕様として受け入れる)
+
+- **画像そのものは公開バケット**にあり、URL を知っていれば誰でも取得できる。
+  Storage のパスは `submissions/<年>/<月>/<ユーザー名>-<時刻>-<乱数>.webp` 形式のため、
+  **画像 URL にはユーザー名が含まれる**。ビューは `image_path` を返すので、
+  ここから投稿者名が推測できる。完全に消すならパスを乱数のみに変え、
+  既存画像のリネームも必要になる → 別タスク。当面は「作成者名を隠す」の主目的
+  (一覧・API から機械的に収集されない) は達成できている。
+- Service Role Key を持つ社長のスクリプトは RLS を迂回する。これは意図した設計。
+
+### フロント側の変更 (実装済み)
+
+| ファイル | 変更 |
+|---|---|
+| `lib/supabaseClient.ts` | `PUBLIC_PHOTO_QUESTIONS_VIEW = 'public_photo_questions'` を追加 |
+| `lib/supabasePhotoQuestionRepository.ts` | `findByFilter` / `findByIds` の参照先をビューへ変更し、`.eq('is_hidden', false)` を削除 (ビュー側で除外済み。ビューに `is_hidden` 列は無いので付けたままだとエラーになる)。`findBySubmitterId` と `submit` はベーステーブルのまま |
+
+### 確認方法
+
+1. 上の SQL を実行する
+2. `/quiz/photo/play` で写真クイズが今までどおり出題される
+3. 「作成者名を表示する」で投稿した問題には「作成者: ○○ さん」が出る
+4. マイページの投稿履歴に自分の投稿が今までどおり並ぶ
+5. `/quiz/photo/submit` から投稿できる (ログイン中であること)
+6. **なりすましが弾かれること** — Anon Key で他人の名前を騙って INSERT:
+   ```bash
+   curl -X POST "https://<PROJECT>.supabase.co/rest/v1/user_photo_questions" \
+     -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" \
+     -d '{"submitter_id":"_shacho","image_path":"x.webp","ramen_type":"shoyu","prefecture":"東京都","photo_type":"ramen","difficulty":"mid","question":"この画像はどこの店のものですか？","options":["a","b","c","d"],"answer_idx":0,"shop_info":{"name":"x"}}'
+   ```
+   → `new row violates row-level security policy` が返れば成功
+7. **露出が止まっていること** — Anon Key でベーステーブルを直接 SELECT:
+   ```bash
+   curl "https://<PROJECT>.supabase.co/rest/v1/user_photo_questions?select=submitter_id" \
+     -H "apikey: <ANON_KEY>"
+   ```
+   → `[]` (空配列) が返れば成功
+8. **ビューはマスクされていること**:
+   ```bash
+   curl "https://<PROJECT>.supabase.co/rest/v1/public_photo_questions?select=submitter_id,show_submitter" \
+     -H "apikey: <ANON_KEY>"
+   ```
+   → `show_submitter` が `false` の行は `submitter_id` が `null` になっていること
+      (社長が一括投入した 70 問はすべて `false` なので、全部 `null` のはず)
+9. レート制限が生きていること — 一般ユーザーで 2 件続けて投稿 → 「あと N 分 M 秒」
+
+### ロールバック (何か壊れた場合)
+
+```sql
+DROP VIEW IF EXISTS public_photo_questions;
+DROP POLICY IF EXISTS "photo_questions_select_own" ON user_photo_questions;
+DROP POLICY IF EXISTS "photo_questions_insert_own" ON user_photo_questions;
+DROP POLICY IF EXISTS "authenticated_storage_insert" ON storage.objects;
+
+CREATE POLICY "public_photo_questions_select" ON user_photo_questions
+  FOR SELECT TO public USING (true);
+CREATE POLICY "public_photo_questions_insert" ON user_photo_questions
+  FOR INSERT TO public WITH CHECK (true);
+CREATE POLICY "public_storage_insert" ON storage.objects
+  FOR INSERT TO public WITH CHECK (bucket_id = 'photo-quiz-user');
+```
+
+戻す場合はフロント側も `PUBLIC_PHOTO_QUESTIONS_VIEW` → `USER_PHOTO_QUESTIONS_TABLE` に戻し、
+`.eq('is_hidden', false)` を復活させること (ビューが無いと出題が空になる)。

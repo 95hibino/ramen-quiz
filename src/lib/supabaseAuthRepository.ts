@@ -30,6 +30,7 @@ import type {
 import { AuthError } from '@/types/account';
 import { isValidPrefecture, type Prefecture } from '@/data/prefectures';
 import {
+  normalizeUsername,
   validateFavoriteShop,
   validatePassword,
   validatePrefecture,
@@ -95,6 +96,47 @@ function toAuthError(err: unknown, fallbackMessage: string): AuthError {
         ? 'ユーザー名またはパスワードが違います。'
         : `${fallbackMessage} (${message})`;
   return new AuthError(code, uiMessage);
+}
+
+/**
+ * 復旧コード系 RPC (`issue_recovery_code` / `reset_password_with_recovery_code`) が
+ * `RAISE EXCEPTION` で返す識別子を、利用者向けの日本語メッセージに翻訳する。
+ *
+ * サーバ側は「ユーザー名が存在しない」場合も `invalid_recovery_code` を返す設計にしてある
+ * (ユーザー名の存在有無を攻撃者に教えないため)。ここでも区別せず同じ文言にする。
+ * docs/SUPABASE_SETUP.md §23 参照。
+ */
+function toRecoveryError(error: { message?: string } | null, fallback: string): AuthError {
+  const message = error?.message ?? '';
+
+  const locked = message.match(/recovery_locked:(\d+)/);
+  if (locked) {
+    const totalSec = Number.parseInt(locked[1], 10);
+    const label =
+      Number.isFinite(totalSec) && totalSec >= 60
+        ? `あと約 ${Math.ceil(totalSec / 60)} 分`
+        : `あと ${Number.isFinite(totalSec) ? totalSec : 60} 秒`;
+    return new AuthError(
+      'unknown',
+      `復旧コードの入力を続けて誤ったため、一時的にロックされています。${label}お待ちください。`,
+    );
+  }
+  if (message.includes('invalid_recovery_code')) {
+    return new AuthError(
+      'invalid_credentials',
+      'ユーザー名または復旧コードが正しくありません。',
+    );
+  }
+  if (message.includes('invalid_password')) {
+    return new AuthError('validation_error', 'パスワードは 8 文字以上にしてください。');
+  }
+  if (message.includes('not_authenticated')) {
+    return new AuthError('unknown', 'ログインが必要です。再度ログインしてお試しください。');
+  }
+  if (message.includes('profile_not_found')) {
+    return new AuthError('unknown', 'アカウント情報が見つかりませんでした。');
+  }
+  return new AuthError('unknown', `${fallback}${message ? ` (${message})` : ''}`);
 }
 
 /** Supabase 側で自分の public_profiles 行を 1 件だけ取得する。 */
@@ -202,6 +244,12 @@ async function upsertProfileRow(user: User): Promise<void> {
     // Postgres の関数側で投げた RAISE EXCEPTION は error.message に文言が入る。
     // 'not_authenticated' なら JWT が届いていない (通常はコード側で防止済み)。
     // 'invalid_*' ならバリデーション違反 (フロント側で捕捉済みのはず)。
+    // 'username_taken' / 一意制約違反 (23505) は他人が同名を先に取ったケース。
+    // 事前チェックとの間に race があるため、ここが最終防衛線になる。
+    const detail = `${error.message} ${error.code ?? ''} ${error.details ?? ''}`;
+    if (detail.includes('username_taken') || detail.includes('23505')) {
+      throw new AuthError('username_taken', 'このユーザー名は既に使われています。');
+    }
     throw new AuthError(
       'unknown',
       `プロフィール保存に失敗しました: ${error.message}`,
@@ -220,7 +268,9 @@ export const supabaseAuthRepository: AuthRepository = {
     const favoriteShopErr = validateFavoriteShop(input.favoriteShop);
     if (favoriteShopErr) throw new AuthError('validation_error', favoriteShopErr);
 
-    const username = input.username.trim();
+    // 保存する値そのものを NFKC 正規化しておく。全角英数・半角カナのゆらぎを畳んで
+    // 「見た目が同じ別アカウント」を作れないようにするため。
+    const username = normalizeUsername(input.username);
     const favoriteShop = input.favoriteShop.trim();
     const client = requireClient();
 
@@ -310,7 +360,9 @@ export const supabaseAuthRepository: AuthRepository = {
   },
 
   async login(input: LoginInput): Promise<User> {
-    const username = input.username.trim();
+    // signup 時と同じ正規化を通す。これを揃えないと、全角で登録した人が
+    // 半角で入力したときに fake email が変わってログインできなくなる。
+    const username = normalizeUsername(input.username);
     if (username.length === 0 || input.password.length === 0) {
       throw new AuthError('invalid_credentials', 'ユーザー名とパスワードを入力してください。');
     }
@@ -367,20 +419,53 @@ export const supabaseAuthRepository: AuthRepository = {
   },
 
   async isUsernameTaken(username: string): Promise<boolean> {
-    const normalized = username.trim();
+    const normalized = normalizeUsername(username);
     if (normalized.length === 0) return false;
     const client = requireClient();
-    // username カラムに対する大小無視の一致で探す (SQL 側インデックス lower(username) を活かす)。
+    // ⚠️ ilike のパターンでは `%` `_` `\` がワイルドカード/エスケープとして解釈される。
+    //    ユーザー名には `_` が使えるため、素で渡すと "a_b" が "axb" にマッチしてしまい
+    //    「使われていないのに使用中」と誤判定する。必ずエスケープすること。
+    const escaped = normalized.replace(/[\\%_]/g, (c) => `\\${c}`);
     const { data, error } = await client
       .from(PUBLIC_PROFILES_TABLE)
       .select('id')
-      .ilike('username', normalized)
+      .ilike('username', escaped)
       .limit(1);
     if (error) {
+      // ここは UX 向上のための事前チェックにすぎない。失敗しても signup 側の
+      // Auth 一意制約と DB 一意インデックスが最終防衛線として働く。
       console.warn('[supabaseAuthRepository] isUsernameTaken failed:', error.message);
       return false;
     }
     return (data ?? []).length > 0;
+  },
+
+  async issueRecoveryCode(): Promise<string> {
+    const client = requireClient();
+    const { data, error } = await client.rpc('issue_recovery_code');
+    if (error) throw toRecoveryError(error, '復旧コードの発行に失敗しました。');
+    if (typeof data !== 'string' || data.length === 0) {
+      throw new AuthError('unknown', '復旧コードの発行に失敗しました。');
+    }
+    return data;
+  },
+
+  async resetPasswordWithRecoveryCode(input: {
+    username: string;
+    recoveryCode: string;
+    newPassword: string;
+  }): Promise<string> {
+    const client = requireClient();
+    const { data, error } = await client.rpc('reset_password_with_recovery_code', {
+      p_username: normalizeUsername(input.username),
+      p_code: input.recoveryCode,
+      p_new_password: input.newPassword,
+    });
+    if (error) throw toRecoveryError(error, 'パスワードの再設定に失敗しました。');
+    if (typeof data !== 'string' || data.length === 0) {
+      throw new AuthError('unknown', 'パスワードの再設定に失敗しました。');
+    }
+    return data;
   },
 
   async findUserById(userId: string): Promise<User | null> {

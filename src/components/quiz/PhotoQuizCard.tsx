@@ -57,6 +57,16 @@ export function PhotoQuizCard({
         />
       </div>
 
+      {/*
+        作成者名。投稿時に「表示する」を選んだ問題だけ submitterName が入っており、
+        非公開の投稿と運営が用意した問題では undefined なので何も描画しない。
+      */}
+      {question.submitterName ? (
+        <p className="-mt-3 text-xs text-ramen-soy/60">
+          作成者: <span className="font-bold text-ramen-soy/80">{question.submitterName}</span> さん
+        </p>
+      ) : null}
+
       <h2 className="text-lg font-bold leading-relaxed text-ramen-nori sm:text-xl">
         {question.question}
       </h2>

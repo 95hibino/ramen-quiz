@@ -6,13 +6,20 @@ import type { PhotoQuestion, PhotoQuestionFilter } from '@/types/photoQuestion';
  * - `imageUrl` は Storage アップロード結果から決まる
  * - `question` は全問共通の固定文字列 (`PHOTO_QUIZ_QUESTION_TEXT`) をリポジトリ側でセットする
  * - `shopInfo` は必須 (name 必須)
+ * - `submitterName` は出題側の読み出し専用フィールドなので投稿では受け取らない。
+ *   代わりに公開するか否かの意思を `showSubmitter` で受け取る。
  */
 export type PhotoQuestionSubmission = Omit<
   PhotoQuestion,
-  'id' | 'imageUrl' | 'thumbnailUrl' | 'question'
+  'id' | 'imageUrl' | 'thumbnailUrl' | 'question' | 'submitterName'
 > & {
   /** 投稿者識別子 (Phase 2: localStorage の username, Phase 3+: Supabase auth.uid)。 */
   submitterId: string;
+  /**
+   * 出題時に作成者名を表示してよいか。
+   * **既定は false (非公開)**。投稿者が明示的にチェックしたときだけ true にする。
+   */
+  showSubmitter: boolean;
 };
 
 /**

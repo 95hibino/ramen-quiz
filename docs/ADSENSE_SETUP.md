@@ -53,13 +53,25 @@ G. デプロイ → /ads.txt と広告表示を確認
 | `VITE_ADSENSE_SLOT_PHOTO_QUIZ_TOP`    | 写真クイズカテゴリ画面上部        | ディスプレイ広告   | 728×90 / 自動       |
 | `VITE_ADSENSE_SLOT_RESULT`            | 結果画面                          | ディスプレイ広告   | 300×250 (固定推奨)  |
 | `VITE_ADSENSE_SLOT_FOOTER`            | フッター                          | ディスプレイ広告   | 320×50              |
-| `VITE_ADSENSE_SLOT_IN_FEED`           | クイズプレイ中 5 問ごと           | インフィード広告   | レスポンシブ        |
+| `VITE_ADSENSE_SLOT_IN_FEED`           | クイズプレイ中 5 問ごと           | ディスプレイ広告   | レスポンシブ        |
 
 **ポイント:**
 
 - 本実装の `<ins data-ad-format="auto" data-full-width-responsive="true">` で自動最適化が効くため、AdSense 側のサイズは「自動 (Responsive)」でも OK
 - CLS 抑止のため外側 `<div>` で固定サイズを与えているので、AdSense 側もできる限り表記サイズに近いユニットを作成すると見た目の不一致が起きにくい
-- インフィード枠のみ「インフィード広告」テンプレートを推奨（記事中に馴染むスタイル）
+- **6 枠すべて「ディスプレイ広告」で作成すること。** `AdBanner.tsx` が出力する `<ins>` は
+  `data-ad-format="auto"` + `data-full-width-responsive="true"` というディスプレイ広告専用の
+  マークアップで、他タイプはそれぞれ別の属性を要求するため、種別が食い違うと広告が表示されない
+
+  | タイプ           | 必要な属性                                                | 現実装 |
+  | ---------------- | --------------------------------------------------------- | ------ |
+  | ディスプレイ広告 | `data-ad-format="auto"`                                     | 対応済 |
+  | インフィード広告 | `data-ad-format="fluid"` + `data-ad-layout-key="..."`        | 未対応 |
+  | 記事内広告       | `data-ad-format="fluid"` + `data-ad-layout="in-article"`     | 未対応 |
+  | Multiplex 広告   | `data-ad-format="autorelaxed"`                              | 未対応 |
+
+- `in-feed` という枠名は「5 問ごとの区切りに出る単発バナー」の意味であり、AdSense の
+  「インフィード広告」タイプとは無関係。フィード構造を持つ画面が無いため該当しない
 
 ---
 

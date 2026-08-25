@@ -113,6 +113,13 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
   // — 個人特定情報を意図的に増やさない方針のため。規約側で「利用時に同意したとみなす」条項を担保。
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const agreementCheckboxId = useId();
+  const showSubmitterCheckboxId = useId();
+
+  /**
+   * 出題時に自分のユーザー名を作成者として表示するか。
+   * **既定は false (非公開)**。公開はあくまで投稿者が明示的に選んだときだけ。
+   */
+  const [showSubmitter, setShowSubmitter] = useState(false);
 
   // プレビュー URL の解放
   useEffect(() => {
@@ -269,6 +276,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
 
     const submission: PhotoQuestionSubmission = {
       submitterId,
+      showSubmitter,
       ramenType,
       prefecture: prefecture as Prefecture,
       photoType,
@@ -664,6 +672,28 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
               aria-required="true"
             />
             <span>上記すべてに同意して投稿します</span>
+          </label>
+        </section>
+
+        <section className="space-y-2 rounded-2xl border border-ramen-soy/20 bg-white p-4">
+          <h2 className="text-sm font-bold text-ramen-soy">作成者名の表示</h2>
+          <p className="text-xs leading-relaxed text-ramen-soy/70">
+            チェックを入れると、この問題が出題されたときに「作成者:{' '}
+            <span className="font-bold text-ramen-soy">{submitterId}</span>{' '}
+            さん」と表示されます。チェックしない場合は作成者名を出さずに出題します。
+          </p>
+          <label
+            htmlFor={showSubmitterCheckboxId}
+            className="flex cursor-pointer items-start gap-2 rounded-xl bg-ramen-broth/10 px-3 py-2 text-sm font-bold text-ramen-soy"
+          >
+            <input
+              id={showSubmitterCheckboxId}
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-ramen-chili"
+              checked={showSubmitter}
+              onChange={(e) => setShowSubmitter(e.target.checked)}
+            />
+            <span>出題時に作成者としてユーザー名を表示する</span>
           </label>
         </section>
 

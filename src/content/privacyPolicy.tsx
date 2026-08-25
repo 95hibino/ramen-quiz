@@ -41,14 +41,33 @@ export function PrivacyPolicyContent(): JSX.Element {
         <p>本サービスは以下の情報を取得します。</p>
         <ul className="ml-5 list-disc space-y-1">
           <li>
-            <span className="font-bold">アプリ内ユーザー情報（ブラウザの localStorage に保存）:</span>{' '}
-            ユーザー名、ハッシュ化済みパスワード、都道府県、好きなラーメン店。
-            本情報はご利用端末のブラウザ内のみに保存され、サーバーには送信されません（パスワードは送信前に SHA-256 でハッシュ化したうえで保存）。
+            <span className="font-bold">アカウント登録情報:</span>{' '}
+            ユーザー名、都道府県、好きなラーメン店。これらは Supabase 上に保管され、
+            <span className="font-bold">ランキング画面で他の利用者に公開されます</span>。
+            パスワードは認証基盤（Supabase Auth）がハッシュ化して保管し、本サービスが平文で保持・閲覧することはありません。
+            パスワード再設定用の復旧コードも同様にハッシュ化して保管し、平文は登録時に一度表示するのみで保存しません。
+          </li>
+          <li>
+            <span className="font-bold">アカウント作成時の内部識別子:</span>{' '}
+            認証基盤の仕様上メールアドレス欄が必須のため、ユーザー名から生成した
+            <span className="font-bold">実在しないダミーのアドレス</span>
+            （<code className="rounded bg-ramen-broth/20 px-1">&lt;英数字&gt;@example.com</code>）を内部的に使用します。
+            利用者の実在するメールアドレスは取得せず、本サービスからメールを送信することもありません。
+          </li>
+          <li>
+            <span className="font-bold">ブラウザ内に保存される情報（localStorage）:</span>{' '}
+            ログイン状態を保持するためのセッション情報、お気に入りに登録した問題、間違えた問題の記録、
+            アプリのインストール案内を閉じたかどうかの状態。
+            このうちお気に入り・間違えた問題・案内の表示状態はご利用端末内のみで管理し、サーバーには送信しません
+            （セッション情報は、ログイン中であることを確認するため通信のたびに認証基盤へ送信されます）。
+            いずれもブラウザのデータを消去すると失われます。
           </li>
           <li>
             <span className="font-bold">写真クイズ投稿時の入力情報:</span>{' '}
             投稿者本人が任意で記入する店舗情報（店名、エリア、解説など）、画像ファイル、選択した分類タグ。
             これらは Supabase Database / Storage に保管されます。
+            なお投稿フォームで「出題時に作成者としてユーザー名を表示する」を選択した場合に限り、
+            その問題の出題画面にユーザー名が公開されます。既定では表示しません。
           </li>
           <li>
             <span className="font-bold">スコア記録:</span>{' '}
@@ -71,7 +90,10 @@ export function PrivacyPolicyContent(): JSX.Element {
         <h2 className="text-base font-bold text-ramen-soy">3. 取得しない情報</h2>
         <p>本サービスは以下の情報を意図的に取得しません。</p>
         <ul className="ml-5 list-disc space-y-1">
-          <li>メールアドレス（お問い合わせフォームで任意入力された場合のみ取得します）</li>
+          <li>
+            メールアドレス。アカウント登録時にも取得しません（2. のとおり、実在しないダミーのアドレスを内部的に生成して使用します）。
+            お問い合わせフォームで返信先として任意にご入力いただいた場合のみ取得します。
+          </li>
           <li>実名、電話番号、住所などの個人を特定する情報</li>
           <li>投稿された画像の EXIF 情報（位置情報を含む）はアップロード前にブラウザ内で自動削除します</li>
         </ul>
@@ -83,7 +105,7 @@ export function PrivacyPolicyContent(): JSX.Element {
         <ul className="ml-5 list-disc space-y-1">
           <li>
             <span className="font-bold">Supabase, Inc.（米国）:</span>{' '}
-            データベースおよび画像ストレージとして利用しています。データ保管リージョンは{' '}
+            データベース・画像ストレージおよびアカウント認証（Supabase Auth）に利用しています。データ保管リージョンは{' '}
             <code className="rounded bg-ramen-broth/20 px-1">ap-northeast-1</code>（東京）を指定しています。
           </li>
           <li>

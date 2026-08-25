@@ -85,6 +85,13 @@ export function Login(): JSX.Element {
           新規登録
         </Link>
       </p>
+
+      <p className="text-center text-xs text-ramen-soy/70">
+        パスワードをお忘れの方は{' '}
+        <Link to="/password-reset" className="font-bold text-ramen-chili hover:underline">
+          復旧コードで再設定
+        </Link>
+      </p>
     </div>
   );
 }

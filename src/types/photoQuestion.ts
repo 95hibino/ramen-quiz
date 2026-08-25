@@ -67,6 +67,15 @@ export interface PhotoQuestion {
     genre?: string;
     description?: string;
   };
+  /**
+   * 出題時に表示する作成者名 (投稿者のユーザー名)。
+   *
+   * **投稿者が「名前を公開する」を選んだ場合のみ値が入る。** 選んでいない投稿と、
+   * 運営が用意した問題では `undefined` になり、UI は作成者行を描画しない。
+   * 公開可否の判定はリポジトリ層 (`show_submitter` カラム) で済ませており、
+   * 表示側はこのフィールドの有無だけを見ればよい。
+   */
+  submitterName?: string;
 }
 
 /**

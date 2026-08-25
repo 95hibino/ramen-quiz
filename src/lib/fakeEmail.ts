@@ -23,6 +23,8 @@
  * どこにも配送されないため、実ユーザーに迷惑メールが届くリスクはない。
  */
 
+import { usernameKey } from '@/lib/validation';
+
 const FAKE_EMAIL_DOMAIN = 'example.com';
 
 function bufferToHex(buffer: ArrayBuffer): string {
@@ -42,7 +44,9 @@ export async function usernameToFakeEmail(username: string): Promise<string> {
   if (typeof crypto === 'undefined' || !crypto.subtle) {
     throw new Error('Web Crypto API が利用できません。HTTPS または localhost で実行してください。');
   }
-  const normalized = username.trim().normalize('NFKC').toLowerCase();
+  // 一意性キーは validation.usernameKey に一本化する。ここで独自に正規化すると
+  // 「DB の一意インデックスは通るが Auth では別人」というズレが生まれるため。
+  const normalized = usernameKey(username);
   const encoder = new TextEncoder();
   const data = encoder.encode(`ramen-quiz-auth:v1:${normalized}`);
   const digest = await crypto.subtle.digest('SHA-256', data);

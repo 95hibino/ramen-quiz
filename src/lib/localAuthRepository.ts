@@ -13,13 +13,16 @@ import {
   validatePassword,
   validatePrefecture,
   validateUsername,
+  usernameKey,
+  normalizeUsername as normalizeUsernameForStorage,
 } from '@/lib/validation';
 import type { AuthRepository } from '@/lib/authRepository';
 
-/** ユーザー名の正規化 (重複判定で使用)。 */
-function normalizeUsername(value: string): string {
-  return value.trim().normalize('NFKC').toLowerCase();
-}
+/**
+ * ユーザー名の一意性キー。Supabase 実装と同じ規則を使うため
+ * `validation.usernameKey` (trim + NFKC + 小文字) をそのまま流用する。
+ */
+const normalizeUsername = usernameKey;
 
 function loadUsers(): User[] {
   return readJson<User[]>(STORAGE_KEYS.users, []);
@@ -43,7 +46,8 @@ function saveCredentials(creds: PasswordCredential[]): void {
  */
 export const localAuthRepository: AuthRepository = {
   async signup(input: SignupInput): Promise<User> {
-    const username = input.username.trim();
+    // Supabase 実装と同じく、保存値そのものを NFKC 正規化する。
+    const username = normalizeUsernameForStorage(input.username);
     const favoriteShop = input.favoriteShop.trim();
     const prefecture = input.prefecture;
 

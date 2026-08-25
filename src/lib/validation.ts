@@ -12,21 +12,73 @@ export const PASSWORD_MIN = 8;
 export const FAVORITE_SHOP_MIN = 1;
 export const FAVORITE_SHOP_MAX = 50;
 
-/** ユーザー名: 3-20 字、英数字 / 日本語 (ひらがな・カタカナ・漢字) / アンダースコア・ハイフン。 */
-const USERNAME_PATTERN =
-  /^[A-Za-z0-9_\-぀-ゟ゠-ヿ一-鿿ｦ-ﾝ]+$/u;
+/**
+ * ユーザー名として保存する形に整える (前後空白の除去 + NFKC 正規化)。
+ *
+ * NFKC を通すことで、見た目が同じでコードポイントが違う入力を 1 つに畳む:
+ * - 全角英数 `ＲＡＭＥＮ` → `RAMEN`
+ * - 半角カナ `ﾗｰﾒﾝ` → `ラーメン`
+ * - 互換文字 `①` → `1`
+ *
+ * これを行わないと「同じ名前に見えるのに別アカウント」を量産できてしまう。
+ * **保存する値そのもの**をこの関数で正規化し、表示もこの値を使う。
+ */
+export function normalizeUsername(value: string): string {
+  return value.trim().normalize('NFKC');
+}
 
-const RESERVED_USERNAMES: readonly string[] = ['_shacho'];
+/**
+ * ユーザー名の一意性を判定するためのキー (正規化 + 小文字化)。
+ *
+ * 大文字小文字を区別しないため `Ramen` と `ramen` は同一人物とみなす。
+ * このキーは以下の 3 か所すべてで同じ値になっている必要がある:
+ * - `fakeEmail.usernameToFakeEmail` が作る Supabase Auth 用メール (実質の一意制約)
+ * - `public_profiles` の一意インデックス `lower(normalize(username, NFKC))`
+ * - フロントの重複事前チェック `isUsernameTaken`
+ */
+export function usernameKey(value: string): string {
+  return normalizeUsername(value).toLowerCase();
+}
+
+/**
+ * ユーザー名に使える文字。**NFKC 正規化後**の文字列に対して適用する。
+ * - 半角英数字 / アンダースコア / ハイフン
+ * - ひらがな (ぁ-ゟ) / カタカナ (ァ-ヿ: 長音符ーやヶを含む) / CJK 統合漢字
+ * - 繰り返し記号など日本語の人名で使う記号: 々 〆 〇
+ *
+ * 空白・絵文字・その他の記号は不可。半角カナは NFKC で全角カナに畳まれるため
+ * 入力自体は受け付けられる (保存値は全角になる)。
+ */
+const USERNAME_PATTERN = /^[A-Za-z0-9_\-ぁ-ゟァ-ヿ々〆〇一-鿿]+$/u;
+
+/**
+ * 予約語。運営・システムを騙る名前を一般ユーザーに取らせない。
+ * 判定は `usernameKey` (NFKC + 小文字) 同士で行う。
+ * `_shacho` は写真投稿のレート制限をバイパスする管理者 ID なので必須
+ * (docs/SUPABASE_SETUP.md §9)。
+ */
+const RESERVED_USERNAMES: readonly string[] = [
+  '_shacho',
+  'admin',
+  'administrator',
+  'root',
+  'support',
+  'official',
+  'system',
+  '運営',
+  '管理者',
+];
 
 export function validateUsername(value: string): string | null {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return 'ユーザー名を入力してください。';
-  if (trimmed.length < USERNAME_MIN) return `ユーザー名は ${USERNAME_MIN} 文字以上にしてください。`;
-  if (trimmed.length > USERNAME_MAX) return `ユーザー名は ${USERNAME_MAX} 文字以内にしてください。`;
-  if (!USERNAME_PATTERN.test(trimmed)) {
-    return 'ユーザー名に使用できない文字が含まれています。';
+  const normalized = normalizeUsername(value);
+  if (normalized.length === 0) return 'ユーザー名を入力してください。';
+  // 長さは NFKC 正規化後で数える (全角英数で上限を回避されないように)
+  if (normalized.length < USERNAME_MIN) return `ユーザー名は ${USERNAME_MIN} 文字以上にしてください。`;
+  if (normalized.length > USERNAME_MAX) return `ユーザー名は ${USERNAME_MAX} 文字以内にしてください。`;
+  if (!USERNAME_PATTERN.test(normalized)) {
+    return 'ユーザー名に使えるのは、英数字・ひらがな・カタカナ・漢字と _ - のみです。';
   }
-  if (RESERVED_USERNAMES.includes(trimmed.toLowerCase())) {
+  if (RESERVED_USERNAMES.includes(usernameKey(normalized))) {
     return 'このユーザー名は予約されているため使用できません。';
   }
   return null;

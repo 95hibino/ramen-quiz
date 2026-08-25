@@ -39,6 +39,9 @@ const About = lazy(() => import('@/pages/About').then((m) => ({ default: m.About
 const NotFound = lazy(() => import('@/pages/NotFound').then((m) => ({ default: m.NotFound })));
 const Signup = lazy(() => import('@/pages/Signup').then((m) => ({ default: m.Signup })));
 const Login = lazy(() => import('@/pages/Login').then((m) => ({ default: m.Login })));
+const PasswordReset = lazy(() =>
+  import('@/pages/PasswordReset').then((m) => ({ default: m.PasswordReset })),
+);
 const Ranking = lazy(() => import('@/pages/Ranking').then((m) => ({ default: m.Ranking })));
 const MyPage = lazy(() => import('@/pages/MyPage').then((m) => ({ default: m.MyPage })));
 const Learn = lazy(() => import('@/pages/Learn').then((m) => ({ default: m.Learn })));
@@ -84,6 +87,7 @@ function AppContent(): JSX.Element {
             <Route path="/about" element={<About />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/password-reset" element={<PasswordReset />} />
             <Route path="/ranking" element={<Ranking />} />
             <Route path="/mypage" element={<MyPage />} />
             <Route path="/learn" element={<Learn />} />

@@ -15,8 +15,25 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 export const SUPABASE_STORAGE_BUCKET: string =
   import.meta.env.VITE_SUPABASE_STORAGE_BUCKET ?? 'photo-quiz-user';
 
-/** ユーザー投稿問題テーブル名 (Phase 2 で固定)。 */
+/**
+ * ユーザー投稿問題テーブル名 (Phase 2 で固定)。
+ *
+ * §24 以降、このテーブルを直接 SELECT できるのは **自分の投稿だけ** (RLS)。
+ * 出題用の公開読み取りは `PUBLIC_PHOTO_QUESTIONS_VIEW` を使うこと。
+ * INSERT 先は引き続きこのテーブル (ビューは読み取り専用)。
+ */
 export const USER_PHOTO_QUESTIONS_TABLE = 'user_photo_questions';
+
+/**
+ * 写真クイズの公開ビュー名 (docs/SUPABASE_SETUP.md §24)。
+ *
+ * ベーステーブルとの違いは 2 点:
+ * - `submitter_id` は `show_submitter = true` の行だけ実名で、それ以外は `null`
+ * - `is_hidden = true` (通報により自動非表示化) の行は最初から含まれない
+ *
+ * このため `is_hidden` 列は存在せず、`.eq('is_hidden', false)` を付けるとエラーになる。
+ */
+export const PUBLIC_PHOTO_QUESTIONS_VIEW = 'public_photo_questions';
 
 /** 公開プロフィールテーブル名 (ランキング表示用の最小情報)。 */
 export const PUBLIC_PROFILES_TABLE = 'public_profiles';

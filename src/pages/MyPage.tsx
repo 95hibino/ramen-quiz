@@ -7,6 +7,7 @@ import type { QuizCategory } from '@/types/quiz';
 import { Seo } from '@/components/common/Seo';
 import { FavoritesSection } from '@/components/mypage/FavoritesSection';
 import { SubmissionsSection } from '@/components/mypage/SubmissionsSection';
+import { RecoverySection } from '@/components/mypage/RecoverySection';
 import { DangerZone } from '@/components/mypage/DangerZone';
 
 /**
@@ -120,6 +121,9 @@ export function MyPage(): JSX.Element {
 
       {/* 投稿履歴 (Supabase 接続時のみ内容表示) */}
       <SubmissionsSection submitterId={currentUser.username} />
+
+      {/* 復旧コードの発行・再発行 (Supabase 接続時のみ) */}
+      <RecoverySection />
 
       {/* プレイ履歴 (既存表示を残す) */}
       <div className="card">
