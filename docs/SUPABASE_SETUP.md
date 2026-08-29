@@ -2498,12 +2498,12 @@ $$;
 
 ### 残る前提 (これは仕様として受け入れる)
 
-- **画像そのものは公開バケット**にあり、URL を知っていれば誰でも取得できる。
+- ~~**画像そのものは公開バケット**にあり、URL を知っていれば誰でも取得できる。
   Storage のパスは `submissions/<年>/<月>/<ユーザー名>-<時刻>-<乱数>.webp` 形式のため、
-  **画像 URL にはユーザー名が含まれる**。ビューは `image_path` を返すので、
-  ここから投稿者名が推測できる。完全に消すならパスを乱数のみに変え、
-  既存画像のリネームも必要になる → 別タスク。当面は「作成者名を隠す」の主目的
-  (一覧・API から機械的に収集されない) は達成できている。
+  **画像 URL にはユーザー名が含まれる**。~~
+  → **§25 で解消済み**。パスを乱数のみに変え、既存画像も改名した。
+  あわせて、Anon Key でバケット内のファイル名を列挙できた穴 (§24 の時点では
+  見落としていた、より影響の大きい経路) も §25 で塞いだ。
 - Service Role Key を持つ社長のスクリプトは RLS を迂回する。これは意図した設計。
 
 ### フロント側の変更 (実装済み)
@@ -2560,3 +2560,148 @@ CREATE POLICY "public_storage_insert" ON storage.objects
 
 戻す場合はフロント側も `PUBLIC_PHOTO_QUESTIONS_VIEW` → `USER_PHOTO_QUESTIONS_TABLE` に戻し、
 `.eq('is_hidden', false)` を復活させること (ビューが無いと出題が空になる)。
+
+
+---
+
+## §25 Storage から投稿者名が漏れる経路を塞ぐ (§24 の残件)
+
+§24 の末尾に「Storage のパスにユーザー名が入っているので画像 URL から投稿者名が推測できる」と
+書いた残件を塞ぐ。調べたところ、漏れる経路は **2 つ**あった。
+
+### 漏洩経路
+
+**経路 1 — ファイル名**
+
+旧形式は `submissions/<yyyy>/<mm>/<ユーザー名>-<epoch_ms>-<乱数>.webp`。
+画像 URL は出題時に必ず HTML に載るので、`show_submitter = false` にしていても
+URL を見れば投稿者名が読めた。
+
+**経路 2 — バケットの一覧取得 (こちらの方が影響が大きい)**
+
+§3 で作った Storage の SELECT ポリシーが `bucket_id = 'photo-quiz-user'` だけを条件にしていたため、
+**Anon Key があればバケット内の全ファイル名を機械的に列挙できた**。
+
+```bash
+curl -X POST "https://<PROJECT>.supabase.co/storage/v1/object/list/photo-quiz-user" \
+  -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" \
+  -d '{"prefix":"submissions/2026/08","limit":1000}'
+```
+
+経路 1 だけ塞いでも、この一覧取得が残っていると「誰がいつ何件投稿したか」の
+カタログを作られてしまう。両方塞ぐ。
+
+### 対策の全体像
+
+| # | 対象 | 内容 | 実施者 |
+|---|---|---|---|
+| 1 | 新規投稿 | パス形式を `submissions/<yyyy>/<mm>/<32桁の16進乱数>.webp` に変更 | 実装済 (要デプロイ) |
+| 2 | 既存 70 件 | 移行スクリプトで改名 | **社長がスクリプトを実行** |
+| 3 | 一覧取得 | Storage の SELECT ポリシーを「自分のファイルだけ」に絞る | **社長が SQL を実行** |
+
+年月のディレクトリは残す。これは `created_at` として元々公開している情報なので、
+新たに何かを漏らすものではない。
+
+### 1. パス形式の変更 (実装済み)
+
+| ファイル | 変更 |
+|---|---|
+| `src/lib/supabasePhotoQuestionRepository.ts` | `generateImagePath()` から `submitterId` 引数を削除し、`crypto.getRandomValues` の 128bit 乱数だけを使う |
+| `scripts/upload_photo_quiz_to_supabase.py` | `build_storage_path()` を同形式に変更 (`secrets.token_hex(16)`) |
+
+### 2. 既存オブジェクトの改名
+
+`shacho/engineering/output/scripts/rename_photo_quiz_storage_paths.py` を使う。
+
+```powershell
+cd C:\Users\hibino\CC\LifePlanning\shacho\engineering\output\scripts
+$env:SUPABASE_URL = "https://xxxxxxxx.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY = "ey..."
+
+# 何が起きるか確認 (既定は dry-run)
+python rename_photo_quiz_storage_paths.py
+
+# 実行
+python rename_photo_quiz_storage_paths.py --execute
+```
+
+**move ではなく copy → DB 更新 → 旧削除の順**にしてある。途中で落ちても
+「画像だけ消えて問題が壊れる」状態を作らないため:
+
+| 失敗した箇所 | 結果 |
+|---|---|
+| copy | 何も変わらない (旧パスのまま) |
+| DB 更新 | コピー先を消してロールバック。旧パスのまま残る |
+| 旧オブジェクトの削除 | DB もオブジェクトも新パスで整合。旧ファイルがゴミとして残るだけ → 警告して継続 |
+
+台帳 `storage_rename_state.json` に処理済みを記録するので、中断しても再実行で続きから進む。
+DB に紐付かない孤児オブジェクトも `--include-orphans` で対象にできる。
+
+> **注意**: 改名すると旧 URL は 404 になる。ブラウザや PWA のキャッシュに
+> 旧 URL が残っている利用者は、次のリロードまで画像が欠けて見えることがある。
+> 数十件規模かつ個人運営のサービスなので、この一時的な欠けは許容する判断。
+
+### 3. バケットの一覧取得を止める SQL
+
+```sql
+-- 旧: bucket_id だけを条件にしていたため、Anon Key で全ファイル名を列挙できた
+DROP POLICY IF EXISTS "public_storage_select" ON storage.objects;
+DROP POLICY IF EXISTS "anon_storage_select" ON storage.objects;
+DROP POLICY IF EXISTS "storage_select_own" ON storage.objects;
+
+-- 自分がアップロードしたファイルだけ列挙できる。
+-- 出題時の画像表示はこのポリシーを通らない (下の「なぜ画像は見えるのか」参照)。
+CREATE POLICY "storage_select_own" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id = 'photo-quiz-user' AND owner = auth.uid());
+```
+
+#### なぜ画像は見えなくならないのか
+
+`photo-quiz-user` は **Public バケット** (§4) で、画像は
+`/storage/v1/object/public/<bucket>/<path>` から配信される。
+この公開エンドポイントは RLS を評価しないため、SELECT ポリシーを絞っても
+出題時の画像表示には影響しない。RLS が効くのは
+**一覧取得 (`/object/list/...`) と認証付きダウンロード (`/object/<bucket>/...`)** の側。
+
+アプリが使っているのは `getPublicUrl()` (URL を組み立てるだけで通信しない) と
+`upload()` なので、一覧取得の権限は元々必要なかった。
+
+> **とはいえ確認はすること**: この挙動は Supabase の仕様に依存している。
+> 下の確認手順 2 で、実際に画像 URL が開けることを必ず見てから完了とすること。
+
+### 確認方法
+
+1. 画像 URL を 1 つ手元に控える (出題画面で画像を右クリック → 画像アドレスをコピー)
+2. 上の SQL を実行 → **すぐにその URL をシークレットウィンドウで開く**
+   → 画像が表示されること (表示されなければ下のロールバックを実行)
+3. 一覧取得が止まっていること:
+   ```bash
+   curl -X POST "https://<PROJECT>.supabase.co/storage/v1/object/list/photo-quiz-user" \
+     -H "apikey: <ANON_KEY>" -H "Content-Type: application/json" \
+     -d '{"prefix":"submissions","limit":100}'
+   ```
+   → `[]` が返れば成功
+4. 改名スクリプトを `--execute` で実行 → 写真クイズを開いて画像が表示されること
+5. Table Editor で `user_photo_questions.image_path` がすべて
+   `submissions/<yyyy>/<mm>/<32桁の16進>.webp` になっていること
+6. ログインして新規投稿 → 保存されたパスにユーザー名が含まれないこと
+
+### ロールバック
+
+```sql
+DROP POLICY IF EXISTS "storage_select_own" ON storage.objects;
+CREATE POLICY "public_storage_select" ON storage.objects
+  FOR SELECT TO public USING (bucket_id = 'photo-quiz-user');
+```
+
+改名の方は台帳 `storage_rename_state.json` に
+`旧パス → 新パス` の対応が残っているので、戻したい場合はこれを見て手作業で戻す
+(自動で戻すスクリプトは用意していない。DB の `image_path` も併せて戻す必要がある)。
+
+### 残る前提
+
+- 画像そのものは公開 URL を知っていれば誰でも取得できる。これは
+  「出題画面に画像を出す」以上どうやっても避けられない
+- 乱数 128bit のパスは推測できないので、**URL を知らない第三者が
+  総当たりで画像を見つけることはできない**

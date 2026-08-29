@@ -213,16 +213,24 @@ function rowToPhotoQuestion(row: UserPhotoQuestionRow): PhotoQuestion | null {
 
 /**
  * 一意な Storage パスを生成する。
- * 形式: `submissions/<yyyy>/<mm>/<submitterId>-<timestamp>-<rand>.webp`
- * (人間が見て投稿元と時系列を追える程度の情報)。
+ * 形式: `submissions/<yyyy>/<mm>/<32桁の16進乱数>.webp`
+ *
+ * **ファイル名に投稿者名を含めない**。バケットは公開設定で、画像 URL は
+ * 出題時に誰にでも見えるため、ファイル名にユーザー名を入れると
+ * §22 / §24 で隠した作成者名が URL から読めてしまう。
+ * 年月のディレクトリは残しているが、これは `created_at` として元々公開されている情報。
+ *
+ * 乱数は 128 bit (`crypto.getRandomValues`)。衝突を実質ゼロにしつつ、
+ * `upsert: false` で万一の衝突時はアップロードが失敗する側に倒している。
  */
-function generateImagePath(submitterId: string): string {
+function generateImagePath(): string {
   const now = new Date();
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const safeId = submitterId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `submissions/${year}/${month}/${safeId}-${now.getTime()}-${rand}.webp`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const rand = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `submissions/${year}/${month}/${rand}.webp`;
 }
 
 export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
@@ -264,7 +272,7 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
     }
 
     // 1) Storage に画像 PUT
-    const imagePath = generateImagePath(data.submitterId);
+    const imagePath = generateImagePath();
     const uploadResult = await client.storage
       .from(SUPABASE_STORAGE_BUCKET)
       .upload(imagePath, image, {
