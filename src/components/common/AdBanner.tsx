@@ -8,8 +8,18 @@
  * 2. **プレースホルダモード**: 上記いずれかが未設定なら、設計書 §3.3 の固定枠を
  *    維持してプレースホルダ表示する（Phase 1 と同じ挙動）。
  *
- * いずれのモードでも CLS=0 を確保するため、外側 `<div>` で固定サイズを与え、
- * AdSense の `<ins>` はその中で `display:block; width:100%; height:100%` で伸縮させる。
+ * **サイズの扱い (2026-08-25 改修)**:
+ * 旧実装は CLS=0 のために外側 `<div>` を固定サイズにし、`<ins>` を
+ * `height:100%` で押し込めていた。しかしレスポンシブ広告 (`data-ad-format="auto"`)
+ * は AdSense 側が幅を測って高さを決める仕組みで、高さを固定すると
+ * 「その寸法に収まる広告が無い」と判断され `data-ad-status="unfilled"` になる。
+ * 実際に本番で全枠が unfilled になったため、以下に改めた:
+ *
+ * - `<ins>` に高さを与えない (Google 公式スニペットと同じく幅のみ)
+ * - 外側 `<div>` は `minHeight` で場所だけ予約する (CLS を完全にゼロにはできないが、
+ *   ファーストビューの飛びは抑えつつ在庫のミスマッチを解消する)
+ * - 配信モードでは flex を使わない。flex アイテムだと AdSense の幅測定が
+ *   崩れることがあるため、素の block 要素で幅を渡す
  */
 
 import { useEffect, useRef, type CSSProperties } from 'react';
@@ -34,7 +44,19 @@ interface AdBannerProps {
   className?: string;
 }
 
-/** design §3.3 の広告サイズに対応する固定枠 */
+/**
+ * 配信モードの外枠。高さは `minHeight` での「予約」に留め、上限は設けない。
+ * `maxWidth` は広告が間延びしないための上限で、AdSense はこの幅を見て
+ * 収まる在庫の中から最適なものを選ぶ。
+ */
+const RESERVE_STYLES: Record<AdSize, CSSProperties> = {
+  leaderboard: { width: '100%', maxWidth: 728, minHeight: 90 },
+  'medium-rectangle': { width: '100%', maxWidth: 336, minHeight: 250 },
+  'mobile-banner': { width: '100%', maxWidth: 468, minHeight: 50 },
+  responsive: { width: '100%', minHeight: 100 },
+};
+
+/** プレースホルダ表示用の固定枠 (design §3.3)。広告未設定時にしか使わない。 */
 const SIZE_STYLES: Record<AdSize, CSSProperties> = {
   leaderboard: { width: 728, height: 90, maxWidth: '100%' },
   'medium-rectangle': { width: 300, height: 250, maxWidth: '100%' },
@@ -98,12 +120,13 @@ export function AdBanner({ slot, size, className }: AdBannerProps): JSX.Element 
         aria-label={`広告 (${slot})`}
         data-ad-slot={slot}
         data-ad-size={size}
-        className={containerClassName}
-        style={SIZE_STYLES[size]}
+        className={`mx-auto ${className ?? ''}`.trim()}
+        style={RESERVE_STYLES[size]}
       >
+        {/* height は指定しない。AdSense が幅から高さを決めて自身で設定する。 */}
         <ins
           className="adsbygoogle"
-          style={{ display: 'block', width: '100%', height: '100%' }}
+          style={{ display: 'block', width: '100%' }}
           data-ad-client={clientId}
           data-ad-slot={slotId}
           data-ad-format="auto"
