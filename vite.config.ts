@@ -4,7 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
 // https://vitejs.dev/config/
-export default defineConfig({
+//
+// プリレンダリング (scripts/prerender.tsx) のため、`vite build --ssr` でも
+// この設定が使われる。SSR ビルドでは依存が external 扱いになり manualChunks が
+// 使えないため、`isSsrBuild` で分岐する。
+export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     react(),
     // ================================================================
@@ -119,6 +123,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  ssr: {
+    // react-helmet-async は CJS のみを配布しており、Node の ESM 相互運用では
+    // 名前付き export (HelmetProvider 等) を静的に検出できず
+    // "does not provide an export named 'HelmetProvider'" で落ちる。
+    // external にせず SSR バンドルへ取り込むことで回避する。
+    noExternal: ['react-helmet-async'],
+  },
   server: {
     port: 5173,
     host: true,
@@ -135,17 +146,22 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // React 本体 + Router: ほぼ全ページで必要。長期キャッシュしやすいよう分離
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // Supabase は認証・ランキング系ページのみで使用。個別 chunk 化で初回ロードを軽く
-          supabase: ['@supabase/supabase-js'],
-          // SEO 用 meta 管理。全ページで使うが更新頻度は低い
-          helmet: ['react-helmet-async'],
-          // グローバルストア (小さいが独立させることで頻繁な更新の影響を局所化)
-          zustand: ['zustand'],
-        },
+        // SSR ビルドでは react などが external になるため manualChunks を指定できない
+        // ("cannot be included in manualChunks because it is resolved as an external module")。
+        // クライアントビルドのときだけ vendor 分割を行う。
+        manualChunks: isSsrBuild
+          ? undefined
+          : {
+              // React 本体 + Router: ほぼ全ページで必要。長期キャッシュしやすいよう分離
+              'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+              // Supabase は認証・ランキング系ページのみで使用。個別 chunk 化で初回ロードを軽く
+              supabase: ['@supabase/supabase-js'],
+              // SEO 用 meta 管理。全ページで使うが更新頻度は低い
+              helmet: ['react-helmet-async'],
+              // グローバルストア (小さいが独立させることで頻繁な更新の影響を局所化)
+              zustand: ['zustand'],
+            },
       },
     },
   },
-});
+}));

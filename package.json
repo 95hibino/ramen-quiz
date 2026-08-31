@@ -6,10 +6,13 @@
   "description": "ラーメンクイズWebアプリ (Phase 1 MVP)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && tsx scripts/generate-sitemap.ts",
+    "build": "tsc -b && npm run build:client && npm run build:ssr && npm run prerender && tsx scripts/generate-sitemap.ts",
     "preview": "vite preview",
     "start": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:client": "vite build",
+    "build:ssr": "vite build --ssr src/entry-server.tsx --outDir dist-ssr",
+    "prerender": "tsx scripts/prerender.ts"
   },
   "dependencies": {
     "@sentry/react": "^8.55.2",

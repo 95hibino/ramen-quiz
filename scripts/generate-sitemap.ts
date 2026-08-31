@@ -23,61 +23,25 @@
  *
  * 都道府県別詳細ページ (`/regions/:prefectureSlug`) は `src/data/regionalRamen.ts` から
  * slug を動的に読み込むことで、データ追加時にスクリプト側の修正なしでカバレッジが広がる。
+ *
+ * パス定義そのものは `scripts/publicRoutes.ts` に集約し、プリレンダリングと共有する。
  */
 import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { REGIONAL_RAMEN } from '../src/data/regionalRamen';
-
-/** sitemap に載せる単一 URL の定義。 */
-interface SitemapEntry {
-  /** ルート相対パス (例: `/quiz/knowledge`)。 */
-  path: string;
-  /**
-   * 0.0〜1.0 の優先度。トップ・主要動線 1.0、カテゴリ 0.8、サブ 0.6、法務系 0.4 を目安。
-   * Google は priority を強くは尊重しないが、Bing/AI 系クローラーには参考にされうる。
-   */
-  priority: number;
-  /** 更新頻度 (`daily` / `weekly` / `monthly` / `yearly`)。Google は無視するが他で参照される。 */
-  changefreq: 'daily' | 'weekly' | 'monthly' | 'yearly';
-}
+import { buildPublicRoutes, type PublicRoute } from './publicRoutes';
 
 /** 既定ドメイン: Vercel 本番 URL。`VITE_SITE_URL` で上書き可能。 */
 const DEFAULT_SITE_URL = 'https://ramen-quiz-ten.vercel.app';
 
 /**
- * sitemap に含める公開ページの固定分。順序は出力 XML の順序と一致する。
- * 動的に生成する `/regions/:prefectureSlug` は `buildEntries()` 内で末尾に連結する。
+ * sitemap に載せる URL 一覧。
+ *
+ * 定義の実体は `scripts/publicRoutes.ts` にあり、プリレンダリング
+ * (`scripts/prerender.tsx`) と同じソースを共有する。片方だけ更新して
+ * 「sitemap には載るがプリレンダされていない」状態になるのを防ぐため。
  */
-const STATIC_ENTRIES: ReadonlyArray<SitemapEntry> = [
-  { path: '/', priority: 1.0, changefreq: 'weekly' },
-  { path: '/quiz/knowledge', priority: 0.9, changefreq: 'weekly' },
-  { path: '/quiz/knowledge/basic', priority: 0.8, changefreq: 'monthly' },
-  { path: '/quiz/knowledge/regional', priority: 0.8, changefreq: 'monthly' },
-  { path: '/quiz/knowledge/expert', priority: 0.8, changefreq: 'monthly' },
-  { path: '/quiz/photo', priority: 0.8, changefreq: 'weekly' },
-  { path: '/ranking', priority: 0.6, changefreq: 'daily' },
-  { path: '/learn', priority: 0.7, changefreq: 'weekly' },
-  { path: '/about', priority: 0.5, changefreq: 'monthly' },
-  { path: '/faq', priority: 0.7, changefreq: 'monthly' },
-  { path: '/glossary', priority: 0.7, changefreq: 'monthly' },
-  { path: '/regions', priority: 0.7, changefreq: 'monthly' },
-  { path: '/privacy', priority: 0.4, changefreq: 'yearly' },
-  { path: '/terms', priority: 0.4, changefreq: 'yearly' },
-  { path: '/contact', priority: 0.4, changefreq: 'yearly' },
-];
-
-/**
- * 静的エントリ + `/regions/:prefectureSlug` の動的エントリを合成する。
- * 動的分は `src/data/regionalRamen.ts` から slug を読み込むことで
- * データ追加時に本スクリプトの修正が不要になる。
- */
-function buildEntries(): ReadonlyArray<SitemapEntry> {
-  const regionDetailEntries: ReadonlyArray<SitemapEntry> = REGIONAL_RAMEN.map((r) => ({
-    path: `/regions/${r.prefectureSlug}`,
-    priority: 0.6,
-    changefreq: 'monthly',
-  }));
-  return [...STATIC_ENTRIES, ...regionDetailEntries];
+function buildEntries(): ReadonlyArray<PublicRoute> {
+  return buildPublicRoutes();
 }
 
 /**
@@ -111,12 +75,12 @@ function escapeXml(value: string): string {
 }
 
 /**
- * `SitemapEntry[]` から sitemap.xml の本文文字列を組み立てる。
+ * `PublicRoute[]` から sitemap.xml の本文文字列を組み立てる。
  *
  * - `<lastmod>` は ISO 8601 日付 (YYYY-MM-DD) で揃える。
  * - URL は `baseUrl + path` を XML エスケープして埋め込む。
  */
-function buildSitemapXml(baseUrl: string, entries: ReadonlyArray<SitemapEntry>): string {
+function buildSitemapXml(baseUrl: string, entries: ReadonlyArray<PublicRoute>): string {
   const lastmod = new Date().toISOString().slice(0, 10);
   const urlBlocks = entries
     .map((entry) => {

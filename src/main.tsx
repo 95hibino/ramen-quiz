@@ -20,6 +20,15 @@ if (!rootElement) {
 // AdBanner マウント時の pushAdsByGoogle() より前にスクリプト要素を入れておく。
 injectAdsenseScript();
 
+// createRoot であって hydrateRoot ではない点に注意。
+//
+// scripts/prerender.ts により、公開ページの #root にはビルド時の HTML が
+// 既に入っている。しかし hydrateRoot は使わない:
+// 認証状態を localStorage から読む UI があるため、サーバ側 (localStorage 無し) と
+// クライアント側で描画結果が食い違い、hydration mismatch を起こす。
+// createRoot は既存の子要素を破棄して描画し直すので、この不一致が問題にならない。
+// プリレンダされた内容は「クローラ向け」と「JS 到達までの初期表示」が役割で、
+// 描画後は通常の SPA として動く。
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <HelmetProvider>
