@@ -118,9 +118,26 @@ SSR ビルドでは react などが external になり、
 
 ## 環境変数
 
-`VITE_SITE_URL` が必要。未設定だとプリレンダ時（Node 側）に
-`window.location.origin` が使えず、`canonical` と `og:url` が空になる。
-**Vercel の Environment Variables にも登録すること。**
+`VITE_SITE_URL` が必要。プリレンダは Node 上で動くため `window.location.origin`
+が使えず、この値が無いと `canonical` / `og:url` / `og:image` が
+`/glossary` のような相対パスのまま出力される。canonical は相対でも一応解決されるが、
+**og:url は絶対 URL でないと OGP が成立しない**（SNS クローラが解決できない）。
+
+そのためリポジトリに `.env.production` を置き、Vite が本番ビルド時に
+自動で読むようにしてある。Vercel Dashboard の設定に依存せずビルドが自己完結する。
+
+```
+VITE_SITE_URL=https://ramen-quiz-ten.vercel.app
+```
+
+Vercel Dashboard に同名の変数があればそちらが優先される。
+**カスタムドメインに移行したら `.env.production` の値を差し替えること。**
+
+`.env.production` は機密を置く場所ではない。ビルド成果物の JS に埋め込まれ、
+Git にも入る。機密は Vercel Dashboard 側で管理する。
+
+`scripts/prerender.ts` は、canonical が絶対 URL になっていないページ数を数えて
+ビルドログに警告を出す。
 
 ## 失敗時の挙動
 

@@ -169,9 +169,14 @@ async function main(): Promise<void> {
         throw new Error('<title> が空です。<Seo /> を描画しない分岐に入っている可能性があります');
       }
 
-      // canonical は VITE_SITE_URL が無いと空になる (Node 側には window が無いため)。
-      // 静かに欠けるとページ全体が正規 URL 無しで公開されるので、件数を数えて後で警告する。
-      if (!(result.helmet?.link.toString() ?? '').includes('canonical')) {
+      // VITE_SITE_URL が無いと、Node 側には window が無いため canonical / og:url が
+      // `/glossary` のような相対パスで出る。canonical は相対でも一応解決されるが
+      // og:url は絶対 URL でないと OGP が成立しない (SNS クローラが解決できない)。
+      // 「無い」だけでなく「相対」も検出する。
+      const canonicalHref = /rel="canonical"[^>]*href="([^"]*)"/.exec(
+        result.helmet?.link.toString() ?? '',
+      )?.[1];
+      if (!canonicalHref || !/^https?:\/\//i.test(canonicalHref)) {
         missingCanonicalCount += 1;
       }
 
@@ -198,11 +203,11 @@ async function main(): Promise<void> {
 
   if (missingCanonicalCount > 0) {
     console.warn(
-      `[prerender] WARNING: ${missingCanonicalCount} 件のページに canonical / og:url がありません。`,
+      `[prerender] WARNING: ${missingCanonicalCount} 件のページで canonical / og:url が絶対 URL になっていません。`,
     );
-    console.warn('[prerender]          環境変数 VITE_SITE_URL が未設定です。');
+    console.warn('[prerender]          VITE_SITE_URL が未設定か、値が絶対 URL ではありません。');
     console.warn(
-      '[prerender]          Vercel の Environment Variables に本番 URL を登録してください ' +
+      '[prerender]          .env.production か Vercel の Environment Variables を確認してください ' +
         '(docs/PRERENDER.md 参照)。',
     );
   }
