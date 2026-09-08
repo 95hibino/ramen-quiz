@@ -5,6 +5,7 @@ import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl, SITE_NAME } from '@/config/site';
+import { ARTICLES } from '@/content/articles';
 import { GLOSSARY_TERMS } from '@/content/glossary';
 import { OPERATOR_CONTACT, OPERATOR_NAME } from '@/content/legalMeta';
 import { REGIONAL_RAMEN } from '@/data/regionalRamen';
@@ -148,6 +149,11 @@ export function Home(): JSX.Element {
           クイズを解く前の予習にも、解いた後の深掘りにも使える解説ページです。
         </p>
         <ul className="grid gap-3 sm:grid-cols-2">
+          <ReadingLink
+            to="/articles"
+            title={`ラーメンの読みもの（${ARTICLES.length} 本）`}
+            description="かん水と麺の科学、家系の系譜図、二郎のコール、つけ麺の歴史、地方別のご当地ラーメン図鑑。クイズの解説をテーマ別に編み直した記事。"
+          />
           <ReadingLink
             to="/regions"
             title={`都道府県別ご当地ラーメン（${REGIONAL_RAMEN.length} 県）`}

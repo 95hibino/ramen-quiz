@@ -60,6 +60,10 @@ const Regions = lazy(() => import('@/pages/Regions').then((m) => ({ default: m.R
 const RegionDetail = lazy(() =>
   import('@/pages/RegionDetail').then((m) => ({ default: m.RegionDetail })),
 );
+const Articles = lazy(() => import('@/pages/Articles').then((m) => ({ default: m.Articles })));
+const ArticleDetail = lazy(() =>
+  import('@/pages/ArticleDetail').then((m) => ({ default: m.ArticleDetail })),
+);
 
 function AppContent(): JSX.Element {
   const syncFromSession = useAuthStore((s) => s.syncFromSession);
@@ -100,6 +104,8 @@ function AppContent(): JSX.Element {
             <Route path="/glossary" element={<Glossary />} />
             <Route path="/regions" element={<Regions />} />
             <Route path="/regions/:prefectureSlug" element={<RegionDetail />} />
+            <Route path="/articles" element={<Articles />} />
+            <Route path="/articles/:slug" element={<ArticleDetail />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

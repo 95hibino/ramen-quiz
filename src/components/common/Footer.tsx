@@ -34,6 +34,10 @@ export function Footer(): JSX.Element {
             FAQ / よくある質問
           </Link>
           <span aria-hidden="true" className="text-ramen-soy/30">|</span>
+          <Link to="/articles" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
+            読みもの
+          </Link>
+          <span aria-hidden="true" className="text-ramen-soy/30">|</span>
           <Link to="/glossary" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
             用語辞典
           </Link>

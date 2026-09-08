@@ -16,6 +16,7 @@
  *     特定されたため、sitemapから完全に除外する。カテゴリ選択自体は
  *     `/quiz/knowledge` から辿れるので、遷移導線は失われない。)
  */
+import { ARTICLES } from '../src/content/articles';
 import { REGIONAL_RAMEN } from '../src/data/regionalRamen';
 
 /** 公開ページ 1 件の定義。`priority` / `changefreq` は sitemap 用。 */
@@ -54,6 +55,7 @@ const STATIC_ROUTES: ReadonlyArray<PublicRoute> = [
   { path: '/faq', priority: 0.7, changefreq: 'monthly' },
   { path: '/glossary', priority: 0.7, changefreq: 'monthly' },
   { path: '/regions', priority: 0.7, changefreq: 'monthly' },
+  { path: '/articles', priority: 0.8, changefreq: 'weekly' },
   { path: '/privacy', priority: 0.4, changefreq: 'yearly' },
   { path: '/terms', priority: 0.4, changefreq: 'yearly' },
   { path: '/contact', priority: 0.4, changefreq: 'yearly' },
@@ -71,5 +73,10 @@ export function buildPublicRoutes(): ReadonlyArray<PublicRoute> {
     priority: 0.6,
     changefreq: 'monthly' as const,
   }));
-  return [...STATIC_ROUTES, ...regionDetailRoutes];
+  const articleRoutes: ReadonlyArray<PublicRoute> = ARTICLES.map((a) => ({
+    path: `/articles/${a.slug}`,
+    priority: 0.7,
+    changefreq: 'monthly' as const,
+  }));
+  return [...STATIC_ROUTES, ...regionDetailRoutes, ...articleRoutes];
 }

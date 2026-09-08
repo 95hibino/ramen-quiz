@@ -4,6 +4,7 @@ import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl, SITE_NAME } from '@/config/site';
 import { CATEGORY_META } from '@/config/quizConfig';
+import { ARTICLES } from '@/content/articles';
 import { GLOSSARY_TERMS } from '@/content/glossary';
 import { LEGAL_LAST_UPDATED, OPERATOR_NAME } from '@/content/legalMeta';
 import { REGIONAL_RAMEN } from '@/data/regionalRamen';
@@ -80,6 +81,15 @@ export function About(): JSX.Element {
           <li>
             <strong>写真当てクイズ</strong>：実際のラーメンの写真からお店・系統・都道府県を当てる形式。
             運営者が撮影した写真に加え、利用者から投稿された写真も掲載しています。
+          </li>
+          <li>
+            <strong>読みもの {ARTICLES.length} 本</strong>：製麺・スープの科学、家系や二郎系の系譜、
+            ラーメンの歴史、地方別のご当地ラーメン図鑑、食文化のトリビアをテーマ別にまとめた解説記事。
+            各記事の末尾に確認クイズを付けています（
+            <Link to="/articles" className="text-ramen-chili hover:underline">
+              読みもの一覧
+            </Link>
+            ）。
           </li>
           <li>
             <strong>都道府県別ご当地ラーメン {REGIONAL_RAMEN.length} 県</strong>：各県の代表的な系統について、
