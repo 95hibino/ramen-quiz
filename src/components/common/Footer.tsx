@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { SITE_NAME } from '@/config/site';
+import { OPERATOR_NAME } from '@/content/legalMeta';
 import { AdBanner } from './AdBanner';
 import { AffiliateBanner } from './AffiliateBanner';
 
@@ -53,7 +55,7 @@ export function Footer(): JSX.Element {
           </Link>
         </nav>
         <p className="text-xs text-ramen-soy/70">
-          © {year} Ramen Quiz — Phase 1 MVP (ローカルモック動作中)
+          © {year} {SITE_NAME} / {OPERATOR_NAME}
         </p>
       </div>
     </footer>

@@ -1,6 +1,6 @@
 # ラーメンクイズ
 
-> ラーメンに関する 4 択クイズ Web アプリ。知識クイズ（基礎・地域・上級の 3 カテゴリ計 171 問）と、ユーザー投稿型の写真当てクイズを提供します。解説付きでラーメンの歴史・地域文化・製麺技術などを楽しく学べます。
+> ラーメンに関する 4 択クイズ Web アプリ。知識クイズ（基礎・地域・上級の 3 カテゴリ計 300 問）と、ユーザー投稿型の写真当てクイズを提供します。解説付きでラーメンの歴史・地域文化・製麺技術などを楽しく学べます。都道府県別のご当地ラーメン解説（43 県）と用語辞典（44 語）も収録。
 
 ## サービス概要
 
@@ -10,38 +10,28 @@
 - ユーザー認証は localStorage 完結の簡易方式
 - 写真投稿は Supabase Storage に保存、EXIF（位置情報）は自動削除
 - 完全無料、広告（Google AdSense）で運営
+- 問題・解説の作り方: 発祥店・発祥年は自治体・観光協会・店舗の公表情報など広く周知された内容を基にし、諸説あるものは「〜とされる」「諸説あり」と明記
 
 ## 主要ページ
 
-- [ホーム](https://ramen-quiz-ten.vercel.app/): サービス概要と各クイズへの導線
-- [知識クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge): ラーメンの基礎知識・地域文化・上級知識を問う 4 択クイズ（カテゴリ選択画面）
-- [基礎クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/basic): ラーメンの基礎知識（スープ・麺・トッピングなど）50 問
-- [地域クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/regional): ご当地ラーメン・地域系統に関する 50 問
-- [上級クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge/expert): 製麺技術・業界用語・家系の系譜などマニアック向け 71 問
+- [ホーム](https://ramen-quiz-ten.vercel.app/): サービス概要と各クイズ・読みものへの導線
+- [知識クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge): 初級（基礎知識 70 問）・中級（ご当地ラーメン・地域文化 70 問）・上級（製麺技術・スープの科学・家系や二郎系の系譜 160 問）から選んで挑戦する 4 択クイズ
 - [写真当てクイズ](https://ramen-quiz-ten.vercel.app/quiz/photo): 写真からお店・系統・都道府県を当てる投稿型クイズ
+- [都道府県別ご当地ラーメン](https://ramen-quiz-ten.vercel.app/regions): 全国 43 県のご当地ラーメンを地方別（北海道/東北/関東/中部/近畿/中国/四国/九州）に一覧化。各県ページで代表系統のスープ・麺・トッピング・発祥・地域の食文化を解説
+- [ラーメン用語辞典](https://ramen-quiz-ten.vercel.app/glossary): スープ・麺・タレ・トッピング・系統・文化用語をカテゴリ別に解説（44 語）
+- [よくある質問 (FAQ)](https://ramen-quiz-ten.vercel.app/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A
+- [学習モード](https://ramen-quiz-ten.vercel.app/learn): 間違えた問題とお気に入りの復習
 - [ランキング](https://ramen-quiz-ten.vercel.app/ranking): 累計スコアランキング（上位 100 名）
-- [このサイトについて](https://ramen-quiz-ten.vercel.app/about): サイトの趣旨とデータソース
-- [よくある質問 (FAQ)](https://ramen-quiz-ten.vercel.app/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A 20 件
-- [ラーメン用語辞典](https://ramen-quiz-ten.vercel.app/glossary): スープ・麺・タレ・トッピング・系統・文化用語をカテゴリ別に解説（40 語）
-- [都道府県別ご当地ラーメン](https://ramen-quiz-ten.vercel.app/regions): 全国 20 県以上のご当地ラーメンを地方別（北海道/東北/関東/中部/近畿/中国/四国/九州）に一覧化
+- [このサイトについて](https://ramen-quiz-ten.vercel.app/about): 運営者・目的・問題の作り方と検証方針・広告の扱い
 - [プライバシーポリシー](https://ramen-quiz-ten.vercel.app/privacy)
 - [利用規約](https://ramen-quiz-ten.vercel.app/terms)
 - [お問い合わせ](https://ramen-quiz-ten.vercel.app/contact)
 
-## コンテンツの特徴
+## 都道府県ページの例
 
-- 全 171 問の知識クイズ、各問題に解説文付き
-- 基礎・地域が各 50 問、上級が 71 問の 3 カテゴリ
-- ラーメンの歴史・製麺技術・地域系統・業界用語などを網羅
-- 1 セッション 10 問・各 20 秒のスピードクイズ形式
-- 正解 1 問 10 点 + 残り時間ボーナス最大 5 点
-- 写真当てクイズは 5 軸（種類 / 都道府県 / 写真タイプ / 難易度 / 麺の太さ）で絞り込み可能
-- 用語辞典と都道府県別ご当地ラーメンページを併設し、クイズ学習の副読ページとして活用可能
-
-## 技術スタック
-
-- フロントエンド: Vite + React 18 + TypeScript + Tailwind CSS
-- 状態管理: Zustand
-- ルーティング: React Router v6
-- ホスティング: Vercel
-- バックエンド: Supabase（写真投稿・お問い合わせ・ランキング）
+- [北海道](https://ramen-quiz-ten.vercel.app/regions/hokkaido): 札幌味噌・旭川醤油・函館塩・釧路
+- [福島県](https://ramen-quiz-ten.vercel.app/regions/fukushima): 喜多方・白河・郡山ブラック
+- [神奈川県](https://ramen-quiz-ten.vercel.app/regions/kanagawa): 家系ラーメン・サンマー麺
+- [新潟県](https://ramen-quiz-ten.vercel.app/regions/niigata): 新潟五大ラーメン
+- [福岡県](https://ramen-quiz-ten.vercel.app/regions/fukuoka): 博多・久留米・長浜
+- [沖縄県](https://ramen-quiz-ten.vercel.app/regions/okinawa): 沖縄そば・ソーキそば

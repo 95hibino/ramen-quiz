@@ -107,7 +107,7 @@ export function Regions(): JSX.Element {
         <Link to="/glossary" className="font-bold text-ramen-chili hover:underline">
           ラーメン用語辞典 →
         </Link>
-        <Link to="/quiz/knowledge/regional" className="font-bold text-ramen-chili hover:underline">
+        <Link to="/quiz/knowledge" className="font-bold text-ramen-chili hover:underline">
           地域ラーメンクイズに挑戦 →
         </Link>
         <Link to="/" className="text-ramen-soy/70 hover:underline">
