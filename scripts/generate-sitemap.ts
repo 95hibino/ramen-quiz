@@ -12,12 +12,13 @@
  *   - SITEMAP_OUTPUT_DIR (任意): 出力先ディレクトリ。未設定時は `dist`。
  *
  * 含めるパス (公開しても良い静的ページのみ):
- *   - `/`, `/quiz/knowledge`, `/quiz/knowledge/basic`, `/quiz/knowledge/regional`,
- *     `/quiz/knowledge/expert`, `/quiz/photo`, `/ranking`, `/about`, `/faq`,
+ *   - `/`, `/quiz/knowledge`, `/quiz/photo`, `/ranking`, `/about`, `/faq`,
  *     `/privacy`, `/terms`, `/contact`, `/glossary`, `/regions`, `/regions/:prefectureSlug`
  *
  * 除外するパス (ユーザー固有 or 状態依存で意味のあるコンテンツを持たない):
- *   - `/mypage`, `/result`, `/login`, `/signup`, `/quiz/photo/play`, `/quiz/photo/submit`
+ *   - `/mypage`, `/result`, `/login`, `/signup`, `/quiz/photo/play`, `/quiz/photo/submit`,
+ *     `/quiz/knowledge/basic`, `/quiz/knowledge/regional`, `/quiz/knowledge/expert`
+ *     (プレイ画面。2026-09 に sitemap から除外。詳細は publicRoutes.ts のコメント参照)
  *
  * `<lastmod>` は本スクリプト実行時刻 (ビルド時刻と同等)、`<priority>` はトップ系を高めに設定。
  *

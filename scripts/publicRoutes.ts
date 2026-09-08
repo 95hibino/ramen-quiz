@@ -9,6 +9,12 @@
  * コンテンツを持たない）:
  *   `/mypage` `/result` `/login` `/signup` `/password-reset`
  *   `/quiz/photo/play` `/quiz/photo/submit` `/learn/quiz` `/learn/photo`
+ *   `/quiz/knowledge/basic` `/quiz/knowledge/regional` `/quiz/knowledge/expert`
+ *     (2026-09 削除。出題データを実行時に読むプレイ画面で、プリレンダ対象外
+ *     [prerender: false] にも関わらず sitemap には priority 0.8 で載っていた
+ *     矛盾したエントリだった。GSCで「検出 - インデックス未登録」の原因と
+ *     特定されたため、sitemapから完全に除外する。カテゴリ選択自体は
+ *     `/quiz/knowledge` から辿れるので、遷移導線は失われない。)
  */
 import { REGIONAL_RAMEN } from '../src/data/regionalRamen';
 
@@ -39,12 +45,8 @@ export interface PublicRoute {
 const STATIC_ROUTES: ReadonlyArray<PublicRoute> = [
   { path: '/', priority: 1.0, changefreq: 'weekly' },
   { path: '/quiz/knowledge', priority: 0.9, changefreq: 'weekly' },
-  // プレイ画面は出題データを実行時に読むためプリレンダ対象外 (noIndex)
-  { path: '/quiz/knowledge/basic', priority: 0.8, changefreq: 'monthly', prerender: false },
-  // プレイ画面は出題データを実行時に読むためプリレンダ対象外 (noIndex)
-  { path: '/quiz/knowledge/regional', priority: 0.8, changefreq: 'monthly', prerender: false },
-  // プレイ画面は出題データを実行時に読むためプリレンダ対象外 (noIndex)
-  { path: '/quiz/knowledge/expert', priority: 0.8, changefreq: 'monthly', prerender: false },
+  // /quiz/knowledge/{basic,regional,expert} はプレイ画面 (KnowledgeQuizPlay) で、
+  // 出題データを実行時に読むため中身のないページになる。sitemapには載せない。
   { path: '/quiz/photo', priority: 0.8, changefreq: 'weekly' },
   { path: '/ranking', priority: 0.6, changefreq: 'daily' },
   { path: '/learn', priority: 0.7, changefreq: 'weekly' },

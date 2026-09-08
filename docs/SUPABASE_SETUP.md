@@ -2637,6 +2637,31 @@ python rename_photo_quiz_storage_paths.py --execute
 台帳 `storage_rename_state.json` に処理済みを記録するので、中断しても再実行で続きから進む。
 DB に紐付かない孤児オブジェクトも `--include-orphans` で対象にできる。
 
+#### 「改名が必要なオブジェクトはありません」と出たら
+
+**ほぼ確実に鍵の取り違え**。`SUPABASE_SERVICE_ROLE_KEY` に Anon Key を入れている。
+
+§24 で `user_photo_questions` の SELECT を「自分の投稿だけ」に絞ったため、
+Anon Key で読むと **401 にならず 200 OK + 空配列** が返る。
+この挙動のせいで、鍵を間違えていても「対象 0 件」に見えてしまう。
+
+現在のスクリプトは次の 2 段構えで弾く:
+
+1. 実行前に鍵の JWT payload をデコードし、`role` が `service_role` でなければ中止
+2. 取得行が 0 件なら、鍵を疑うよう促して終了コード 1 で中止
+
+正しい鍵は **Supabase Dashboard → Project Settings → API Keys → `service_role`**。
+Anon Key (`role: anon`) とは別物で、`service_role` は RLS を迂回する。
+**Git / フロント / Vercel には絶対に置かないこと** (§7)。
+
+手元で確認するなら:
+
+```powershell
+python -c "import base64,json,os; p=os.environ['SUPABASE_SERVICE_ROLE_KEY'].split('.')[1]; print(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['role'])"
+```
+
+→ `service_role` と表示されれば正しい。
+
 > **注意**: 改名すると旧 URL は 404 になる。ブラウザや PWA のキャッシュに
 > 旧 URL が残っている利用者は、次のリロードまで画像が欠けて見えることがある。
 > 数十件規模かつ個人運営のサービスなので、この一時的な欠けは許容する判断。
