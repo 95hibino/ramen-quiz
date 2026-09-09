@@ -152,9 +152,6 @@ export function PhotoQuiz(): JSX.Element {
           <br />
           1セッション 10 問・各 30 秒。条件を絞らなければ全問題からランダム出題します。
         </p>
-        <p className="mt-2 text-xs text-ramen-soy/60">
-          ※ 現在は仮の写真素材で動作確認中です。実画像は順次差し替え予定です。
-        </p>
       </div>
 
       <div className="card space-y-3">

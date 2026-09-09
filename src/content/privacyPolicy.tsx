@@ -130,8 +130,9 @@ export function PrivacyPolicyContent(): JSX.Element {
             画像は判定完了後、Google 側の一時ログを除き保存されません。
           </li>
           <li>
-            <span className="font-bold">Google AdSense（将来導入予定）:</span>{' '}
-            広告配信のため Cookie を用いた行動ターゲティング広告を将来的に利用する予定です。導入後は本ポリシーを更新します。
+            <span className="font-bold">Google AdSense:</span>{' '}
+            広告配信のために利用しています。Google を含む第三者配信事業者は Cookie を使用して、
+            ユーザーによる本サイトや他のサイトへのアクセス情報に基づき広告を配信します。
           </li>
           <li>
             <span className="font-bold">アフィリエイトプロバイダ:</span>{' '}
@@ -150,8 +151,10 @@ export function PrivacyPolicyContent(): JSX.Element {
       <section className="space-y-2">
         <h2 className="text-base font-bold text-ramen-soy">5. Cookie・広告</h2>
         <p>
-          本サービスは将来的に Google AdSense による広告配信を行う予定です。
-          AdSense は Cookie や類似技術を利用し、利用者の興味関心に基づいた広告（パーソナライズ広告）を表示します。
+          本サービスは Google AdSense による広告配信を行っています。
+          Google を含む第三者配信事業者は Cookie（DART Cookie を含む）を使用して、
+          ユーザーによる本サイトや他のサイトへの過去のアクセス情報に基づき広告を配信します。
+          AdSense は Cookie や類似技術を利用し、利用者の興味関心に基づいた広告（パーソナライズ広告）を表示する場合があります。
           パーソナライズ広告は、Google の{' '}
           <a
             href="https://adssettings.google.com/"
