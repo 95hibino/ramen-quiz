@@ -6,6 +6,7 @@ import { AdBanner } from '@/components/common/AdBanner';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
+import rawQuestions from '@/data/questions.json';
 
 /** カテゴリ選択画面。 */
 export function KnowledgeQuiz(): JSX.Element {
@@ -16,6 +17,9 @@ export function KnowledgeQuiz(): JSX.Element {
     await startSession(category);
     navigate(`/quiz/knowledge/${category}`);
   };
+
+  const countByCategory = (category: QuizCategory): number =>
+    rawQuestions.filter((q) => q.category === category).length;
 
   // Schema.org: Quiz + ItemList (3 カテゴリ)。
   // 検索結果上で「クイズ」としての構造が伝わるようにし、AI 検索の引用候補にも入りやすくする。
@@ -61,6 +65,33 @@ export function KnowledgeQuiz(): JSX.Element {
         <h1 className="text-2xl font-black text-ramen-soy">難易度を選んでください</h1>
         <p className="mt-2 text-sm text-ramen-soy/70">
           各セッション 10 問・制限時間 20 秒 / 問。正解 1 問 = 10 点 + 残り時間ボーナス最大 5 点です。
+        </p>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">3つの難易度について</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          <strong>初級</strong>（{countByCategory('basic')} 問）はスープ・麺・タレ・トッピングといった
+          ラーメンの基本構造を問う入門編です。<strong>中級</strong>（{countByCategory('regional')} 問）は
+          札幌味噌・喜多方・博多豚骨などのご当地ラーメンや、老舗の歴史を扱います。
+          <strong>上級</strong>（{countByCategory('expert')} 問）は、かん水と麺のグルテン形成、清湯と
+          白湯の違い、乳化、家系や二郎系の系譜といった、製麺技術・スープの科学・専門店の知識まで踏み込みます。
+          初めての方は初級から、ラーメン店巡りが趣味の方は中級・上級から挑戦するのがおすすめです。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          出題形式はすべて 4 択で、正誤に関わらず解説が表示されます。間違えた問題は自動で保存され、
+          <Link to="/learn" className="text-ramen-chili hover:underline">
+            学習モード
+          </Link>
+          でいつでも復習できます。問題の背景をじっくり読みたい場合は、テーマ別にまとめた
+          <Link to="/articles" className="text-ramen-chili hover:underline">
+            読みもの
+          </Link>
+          や
+          <Link to="/glossary" className="text-ramen-chili hover:underline">
+            用語辞典
+          </Link>
+          もあわせてご覧ください。
         </p>
       </div>
 

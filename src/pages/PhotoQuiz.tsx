@@ -157,6 +157,29 @@ export function PhotoQuiz(): JSX.Element {
         </p>
       </div>
 
+      <div className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">出題の仕組み</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          スープの色や乳化の具合、麺の太さや縮れ方、丼や盛り付け、店構えといった見た目の手がかりから、
+          お店・系統・都道府県のいずれかを 4 択で当てるクイズです。豚骨のように白濁したスープと乳化した
+          清湯系スープの違い、極太麺と細麺の見分け方など、知識クイズの<strong>上級</strong>で扱う内容が
+          そのまま役立ちます。写真は運営者が撮影したものに加え、利用者からの投稿写真も掲載しています。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          ラーメンの種類・写真の種類・難易度・麺の太さ・都道府県の 5 軸で絞り込みができ、同じ軸内は
+          OR、軸をまたぐと AND で評価されます（例：「豚骨」×「福岡県」で絞り込むと博多・久留米・長浜系の
+          写真に限定されます）。系統ごとの背景を先に押さえておきたい場合は
+          <Link to="/articles" className="text-ramen-chili hover:underline">
+            読みもの
+          </Link>
+          の名店と系譜シリーズや、
+          <Link to="/regions" className="text-ramen-chili hover:underline">
+            都道府県別ご当地ラーメン
+          </Link>
+          が予習に役立ちます。
+        </p>
+      </div>
+
       <CheckboxGroup
         title="ラーメンの種類"
         options={RAMEN_TYPE_OPTIONS}
