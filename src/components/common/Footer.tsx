@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { SITE_NAME } from '@/config/site';
+import { SITE_NAME, X_ACCOUNT_URL } from '@/config/site';
 import { OPERATOR_NAME } from '@/content/legalMeta';
 import { AdBanner } from './AdBanner';
 import { AffiliateBanner } from './AffiliateBanner';
@@ -22,6 +22,15 @@ export function Footer(): JSX.Element {
         <div className="w-full max-w-sm text-xs">
           <AffiliateBanner slot="footer" />
         </div>
+        <a
+          href={X_ACCOUNT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-bold text-white shadow-md transition hover:brightness-125 active:scale-95"
+        >
+          <XIcon />
+          <span>毎日クイズを配信中 (@ramen_quiz_jp)</span>
+        </a>
         <nav
           aria-label="法務・運営情報"
           className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs"
@@ -63,5 +72,21 @@ export function Footer(): JSX.Element {
         </p>
       </div>
     </footer>
+  );
+}
+
+/** X (旧 Twitter) ロゴ。ShareButtons.tsx の同名アイコンと同一定義。 */
+function XIcon(): JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zM17.083 19.77h1.833L7.084 4.126H5.117z" />
+    </svg>
   );
 }

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
-import { buildSiteUrl, SITE_NAME } from '@/config/site';
+import { buildSiteUrl, SITE_NAME, X_ACCOUNT_URL } from '@/config/site';
 import { CATEGORY_META } from '@/config/quizConfig';
 import { ARTICLES } from '@/content/articles';
 import { GLOSSARY_TERMS } from '@/content/glossary';
@@ -170,6 +170,20 @@ export function About(): JSX.Element {
           <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
             <dt className="min-w-[7rem] shrink-0 font-bold text-ramen-chili">運営者</dt>
             <dd>{OPERATOR_NAME}（個人運営）</dd>
+          </div>
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+            <dt className="min-w-[7rem] shrink-0 font-bold text-ramen-chili">公式X</dt>
+            <dd>
+              <a
+                href={X_ACCOUNT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ramen-chili hover:underline"
+              >
+                @ramen_quiz_jp
+              </a>
+              （毎日クイズを配信中。①〜④で予想してリプ欄で答え合わせできます）
+            </dd>
           </div>
           <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
             <dt className="min-w-[7rem] shrink-0 font-bold text-ramen-chili">お問い合わせ</dt>
