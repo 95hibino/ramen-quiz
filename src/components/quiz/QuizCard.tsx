@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { QuizQuestion } from '@/types/quiz';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
@@ -15,6 +15,10 @@ interface QuizCardProps {
 
 export function QuizCard({ question, selectedIdx, isAnswered, onSelect }: QuizCardProps): JSX.Element {
   const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    setShowHint(false);
+  }, [question.id]);
 
   return (
     <div className="card space-y-5">
