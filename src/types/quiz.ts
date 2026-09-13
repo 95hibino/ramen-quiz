@@ -18,6 +18,9 @@ export interface QuizQuestion {
   answerIdx: number;
   /** 解説文。任意。 */
   explanation?: string;
+  /** ヒント文。任意 (トグルで表示、デフォルト非表示)。正解を直接明言せず、
+   *  手がかり+豆知識を添える形で書く。 */
+  hint?: string;
 }
 
 /** 1問の回答結果。 */

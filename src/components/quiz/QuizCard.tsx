@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { QuizQuestion } from '@/types/quiz';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
@@ -13,6 +14,8 @@ interface QuizCardProps {
 }
 
 export function QuizCard({ question, selectedIdx, isAnswered, onSelect }: QuizCardProps): JSX.Element {
+  const [showHint, setShowHint] = useState(false);
+
   return (
     <div className="card space-y-5">
       <h2 className="text-lg font-bold leading-relaxed text-ramen-nori sm:text-xl">
@@ -37,6 +40,22 @@ export function QuizCard({ question, selectedIdx, isAnswered, onSelect }: QuizCa
           );
         })}
       </div>
+      {!isAnswered && question.hint ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowHint((v) => !v)}
+            className="text-sm font-bold text-ramen-chili underline underline-offset-2"
+          >
+            {showHint ? 'ヒントを隠す' : 'ヒントを見る'}
+          </button>
+          {showHint ? (
+            <p className="mt-2 rounded-xl border border-ramen-broth/40 bg-ramen-broth/10 p-4 text-sm leading-relaxed text-ramen-soy">
+              {question.hint}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {isAnswered && question.explanation ? (
         <div className="rounded-xl border border-ramen-broth/40 bg-ramen-broth/10 p-4 text-sm leading-relaxed text-ramen-soy">
           <p className="mb-1 font-bold text-ramen-chili">解説</p>
