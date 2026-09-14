@@ -178,7 +178,40 @@ export function PrivacyPolicyContent(): JSX.Element {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-base font-bold text-ramen-soy">6. ユーザー投稿コンテンツの取扱い</h2>
+        <h2 className="text-base font-bold text-ramen-soy">6. YouTube API Services の利用について</h2>
+        <p>
+          本サービスの運営者は、公式YouTubeチャンネル「ラーメンクイズ」への動画投稿・固定コメント投稿を自動化する目的で、
+          運営者自身のYouTubeアカウントに対してのみ YouTube Data API (YouTube API Services) を利用しています。
+          この仕組みは運営者本人の投稿作業を代行するものであり、利用者（視聴者）のGoogleアカウント情報を取得・利用することはありません。
+        </p>
+        <p>
+          本アプリケーションがGoogle APIから取得した情報の利用および第三者への転送は、Limited Useの要件を含む
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-1 font-bold text-ramen-chili hover:underline"
+          >
+            Google API Services User Data Policy
+          </a>
+          を遵守します。
+        </p>
+        <p>
+          YouTubeおよびYouTube APIの利用は、
+          <a
+            href="https://www.youtube.com/t/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-1 font-bold text-ramen-chili hover:underline"
+          >
+            YouTube利用規約
+          </a>
+          にも従います。
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-bold text-ramen-soy">7. ユーザー投稿コンテンツの取扱い</h2>
         <p>
           写真クイズに投稿された画像・店名・解説文の著作権は、投稿者本人に帰属します。
           投稿者は本サービスでの表示・配信・サービス改善のための分析に必要な範囲で、無償・非独占で利用許諾を行うものとします。
@@ -190,7 +223,7 @@ export function PrivacyPolicyContent(): JSX.Element {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-base font-bold text-ramen-soy">7. データの削除依頼</h2>
+        <h2 className="text-base font-bold text-ramen-soy">8. データの削除依頼</h2>
         <p>
           ご自身が投稿された写真クイズの削除をご希望の場合、または不適切なコンテンツの削除をご要望の場合は、
           お問い合わせフォーム（種別「著作権・削除依頼」）または各写真クイズ右下の「この問題を通報」ボタンからご連絡ください。
@@ -199,7 +232,7 @@ export function PrivacyPolicyContent(): JSX.Element {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-base font-bold text-ramen-soy">8. 改訂</h2>
+        <h2 className="text-base font-bold text-ramen-soy">9. 改訂</h2>
         <p>
           本ポリシーは法令の変更や本サービスの提供内容に応じて改訂することがあります。
           重要な変更がある場合は、本ページにてお知らせします。
@@ -207,7 +240,7 @@ export function PrivacyPolicyContent(): JSX.Element {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-base font-bold text-ramen-soy">9. 準拠法</h2>
+        <h2 className="text-base font-bold text-ramen-soy">10. 準拠法</h2>
         <p>本ポリシーは日本法に準拠して解釈されます。</p>
       </section>
 
