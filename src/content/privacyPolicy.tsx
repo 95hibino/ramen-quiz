@@ -180,9 +180,9 @@ export function PrivacyPolicyContent(): JSX.Element {
       <section className="space-y-2">
         <h2 className="text-base font-bold text-ramen-soy">6. YouTube API Services の利用について</h2>
         <p>
-          本サービスの運営者は、公式YouTubeチャンネル「ラーメンクイズ」への動画投稿・サムネイル設定・再生リストへの追加・コメント投稿を自動化する目的で、
+          本サービスの運営者は、公式YouTubeチャンネル「ラーメンクイズ」への動画投稿・サムネイル設定・再生リストへの追加・コメント投稿の作業を効率化する目的で、
           運営者自身のYouTubeアカウントに対してのみ YouTube Data API (YouTube API Services) を利用しています。
-          この仕組みは運営者本人の投稿作業を代行するものであり、利用者（視聴者）のGoogleアカウント情報を取得・利用することはありません。
+          利用者（視聴者）のGoogleアカウント情報を取得・利用することはありません。
         </p>
         <ul className="ml-5 list-disc space-y-1">
           <li>
@@ -192,16 +192,11 @@ export function PrivacyPolicyContent(): JSX.Element {
             他の動画・コメント・再生履歴・チャンネル登録者などの情報は読み取りません。
           </li>
           <li>
-            <span className="font-bold">保存:</span>{' '}
-            Googleが発行する認証情報（OAuthトークン）と動画IDは、運営者が管理する1台のPC上のファイルにのみ保存し、
-            サーバー・データベース・クラウドストレージには保存しません。OAuthトークンはソースコード管理（Git）の対象からも除外しています。
-          </li>
-          <li>
-            <span className="font-bold">データ保護の仕組み:</span>{' '}
-            Google APIとの通信はすべてHTTPS（TLS）で暗号化しています。
-            OAuthトークンを保存したPCは運営者本人のみがログインでき、第三者がアクセスすることはできません。
-            要求する権限は機能に必要な最小限（youtube.force-ssl のみ）に限定しています。
-            トークンの漏えいが疑われる場合は、直ちにGoogleアカウントの設定からアクセス権を取り消し、トークンを破棄します。
+            <span className="font-bold">保存と保護:</span>{' '}
+            Googleが発行する認証情報と、投稿結果として返される動画IDは、アクセスが制限された環境で安全に管理し、
+            外部のサーバー・データベース・クラウドストレージには保存しません。
+            Google APIとの通信はすべてTLSで暗号化しており、データにアクセスできるのは運営者のみです。
+            要求する権限は、機能に必要な最小限の範囲に限定しています。
           </li>
           <li>
             <span className="font-bold">共有:</span>{' '}
@@ -209,7 +204,7 @@ export function PrivacyPolicyContent(): JSX.Element {
           </li>
           <li>
             <span className="font-bold">保持と削除:</span>{' '}
-            OAuthトークンは自動投稿を運用している期間のみ保持し、運用を終了した時点でファイルを削除してアクセス権を取り消します。
+            認証情報は本機能を利用している期間のみ保持し、利用を終了した時点で削除してアクセス権を取り消します。
             アクセス権は
             <a
               href="https://myaccount.google.com/permissions"
@@ -225,14 +220,13 @@ export function PrivacyPolicyContent(): JSX.Element {
         <p lang="en" className="rounded bg-ramen-broth/10 p-3 text-xs">
           <span className="font-bold">Summary in English (YouTube API Services):</span>{' '}
           The operator uses the YouTube Data API only on the operator&apos;s own YouTube channel, to upload videos and
-          thumbnails, add them to the operator&apos;s own playlists, and post comments. No data of other users is accessed. The OAuth token and the returned video
-          IDs are stored only in files on a single computer controlled by the operator; they are never stored on servers,
-          databases or cloud storage. The OAuth token is also excluded from source control. All communication with Google APIs
-          is encrypted in transit with HTTPS (TLS). Only the operator can sign in to that computer. The app requests only
-          the minimum scope it needs (youtube.force-ssl). If a token leak is suspected, access is revoked immediately and
-          the token is destroyed. Google user data is never shared with, sold or transferred to third parties, and is not
-          used for advertising or AI model training. The token is kept only while automated posting is in operation and is
-          deleted, with access revoked, when it ends. Access can be revoked at any time at
+          thumbnails, add them to the operator&apos;s own playlists, and post comments. No data of other users is
+          accessed. The credentials issued by Google and the returned video IDs are kept securely in an
+          access-restricted environment and are never stored on external servers, databases or cloud storage. All
+          communication with Google APIs is encrypted with TLS, and only the operator can access the data. The app
+          requests only the minimum scope its features need. Google user data is never shared with, sold or transferred
+          to third parties, and is not used for advertising or AI model training. Credentials are kept only while this
+          feature is in use and are deleted, with access revoked, when use ends. Access can be revoked at any time at
           https://myaccount.google.com/permissions.
         </p>
         <p>
