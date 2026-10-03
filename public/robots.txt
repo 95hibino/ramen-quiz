@@ -36,4 +36,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://ramen-quiz-ten.vercel.app/sitemap.xml
+Sitemap: https://ramen-quiz.com/sitemap.xml

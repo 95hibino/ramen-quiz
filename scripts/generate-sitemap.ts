@@ -8,7 +8,7 @@
  *
  * 環境変数:
  *   - VITE_SITE_URL (任意): 本番ドメインを上書きしたい場合に指定。
- *                            未設定時は `https://ramen-quiz-ten.vercel.app` をフォールバック。
+ *                            未設定時は `https://ramen-quiz.com` をフォールバック。
  *   - SITEMAP_OUTPUT_DIR (任意): 出力先ディレクトリ。未設定時は `dist`。
  *
  * 含めるパス (公開しても良い静的ページのみ):
@@ -32,7 +32,7 @@ import { resolve } from 'node:path';
 import { buildPublicRoutes, type PublicRoute } from './publicRoutes';
 
 /** 既定ドメイン: Vercel 本番 URL。`VITE_SITE_URL` で上書き可能。 */
-const DEFAULT_SITE_URL = 'https://ramen-quiz-ten.vercel.app';
+const DEFAULT_SITE_URL = 'https://ramen-quiz.com';
 
 /**
  * sitemap に載せる URL 一覧。

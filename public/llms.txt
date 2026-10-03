@@ -14,25 +14,25 @@
 
 ## 主要ページ
 
-- [ホーム](https://ramen-quiz-ten.vercel.app/): サービス概要と各クイズ・読みものへの導線
-- [知識クイズ](https://ramen-quiz-ten.vercel.app/quiz/knowledge): 初級（基礎知識 70 問）・中級（ご当地ラーメン・地域文化 70 問）・上級（製麺技術・スープの科学・家系や二郎系の系譜 160 問）から選んで挑戦する 4 択クイズ
-- [写真当てクイズ](https://ramen-quiz-ten.vercel.app/quiz/photo): 写真からお店・系統・都道府県を当てる投稿型クイズ
-- [ラーメンの読みもの](https://ramen-quiz-ten.vercel.app/articles): クイズの解説をテーマ別に編み直した 23 本の解説記事。製麺・スープの科学（かん水、清湯と白湯、カエシと香味油、うま味と塩分）、名店と系譜（家系の系譜図、二郎入門、つけ麺の歴史、一風堂・一蘭・AFURI）、歴史と文化（インスタントラーメン、ラーメンの起源、評論家とメディア、フィクションの中のラーメン）、ご当地ラーメン図鑑（北海道、東北、関東、北陸甲信越、近畿、中国・四国、博多・熊本の豚骨、沖縄そばとちゃんぽん）、トリビア（丼と食文化、トッピング図鑑、店の経営）。各記事末尾に確認クイズ付き
-- [都道府県別ご当地ラーメン](https://ramen-quiz-ten.vercel.app/regions): 全国 43 県のご当地ラーメンを地方別（北海道/東北/関東/中部/近畿/中国/四国/九州）に一覧化。各県ページで代表系統のスープ・麺・トッピング・発祥・地域の食文化を解説
-- [ラーメン用語辞典](https://ramen-quiz-ten.vercel.app/glossary): スープ・麺・タレ・トッピング・系統・文化用語をカテゴリ別に解説（44 語）
-- [よくある質問 (FAQ)](https://ramen-quiz-ten.vercel.app/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A
-- [学習モード](https://ramen-quiz-ten.vercel.app/learn): 間違えた問題とお気に入りの復習
-- [ランキング](https://ramen-quiz-ten.vercel.app/ranking): 累計スコアランキング（上位 100 名）
-- [このサイトについて](https://ramen-quiz-ten.vercel.app/about): 運営者・目的・問題の作り方と検証方針・広告の扱い
-- [プライバシーポリシー](https://ramen-quiz-ten.vercel.app/privacy)
-- [利用規約](https://ramen-quiz-ten.vercel.app/terms)
-- [お問い合わせ](https://ramen-quiz-ten.vercel.app/contact)
+- [ホーム](https://ramen-quiz.com/): サービス概要と各クイズ・読みものへの導線
+- [知識クイズ](https://ramen-quiz.com/quiz/knowledge): 初級（基礎知識 70 問）・中級（ご当地ラーメン・地域文化 70 問）・上級（製麺技術・スープの科学・家系や二郎系の系譜 160 問）から選んで挑戦する 4 択クイズ
+- [写真当てクイズ](https://ramen-quiz.com/quiz/photo): 写真からお店・系統・都道府県を当てる投稿型クイズ
+- [ラーメンの読みもの](https://ramen-quiz.com/articles): クイズの解説をテーマ別に編み直した 23 本の解説記事。製麺・スープの科学（かん水、清湯と白湯、カエシと香味油、うま味と塩分）、名店と系譜（家系の系譜図、二郎入門、つけ麺の歴史、一風堂・一蘭・AFURI）、歴史と文化（インスタントラーメン、ラーメンの起源、評論家とメディア、フィクションの中のラーメン）、ご当地ラーメン図鑑（北海道、東北、関東、北陸甲信越、近畿、中国・四国、博多・熊本の豚骨、沖縄そばとちゃんぽん）、トリビア（丼と食文化、トッピング図鑑、店の経営）。各記事末尾に確認クイズ付き
+- [都道府県別ご当地ラーメン](https://ramen-quiz.com/regions): 全国 43 県のご当地ラーメンを地方別（北海道/東北/関東/中部/近畿/中国/四国/九州）に一覧化。各県ページで代表系統のスープ・麺・トッピング・発祥・地域の食文化を解説
+- [ラーメン用語辞典](https://ramen-quiz.com/glossary): スープ・麺・タレ・トッピング・系統・文化用語をカテゴリ別に解説（44 語）
+- [よくある質問 (FAQ)](https://ramen-quiz.com/faq): ラーメン知識（博多・家系・二郎系・味噌・つけ麺の元祖など）とサービス利用上の Q&A
+- [学習モード](https://ramen-quiz.com/learn): 間違えた問題とお気に入りの復習
+- [ランキング](https://ramen-quiz.com/ranking): 累計スコアランキング（上位 100 名）
+- [このサイトについて](https://ramen-quiz.com/about): 運営者・目的・問題の作り方と検証方針・広告の扱い
+- [プライバシーポリシー](https://ramen-quiz.com/privacy)
+- [利用規約](https://ramen-quiz.com/terms)
+- [お問い合わせ](https://ramen-quiz.com/contact)
 
 ## 都道府県ページの例
 
-- [北海道](https://ramen-quiz-ten.vercel.app/regions/hokkaido): 札幌味噌・旭川醤油・函館塩・釧路
-- [福島県](https://ramen-quiz-ten.vercel.app/regions/fukushima): 喜多方・白河・郡山ブラック
-- [神奈川県](https://ramen-quiz-ten.vercel.app/regions/kanagawa): 家系ラーメン・サンマー麺
-- [新潟県](https://ramen-quiz-ten.vercel.app/regions/niigata): 新潟五大ラーメン
-- [福岡県](https://ramen-quiz-ten.vercel.app/regions/fukuoka): 博多・久留米・長浜
-- [沖縄県](https://ramen-quiz-ten.vercel.app/regions/okinawa): 沖縄そば・ソーキそば
+- [北海道](https://ramen-quiz.com/regions/hokkaido): 札幌味噌・旭川醤油・函館塩・釧路
+- [福島県](https://ramen-quiz.com/regions/fukushima): 喜多方・白河・郡山ブラック
+- [神奈川県](https://ramen-quiz.com/regions/kanagawa): 家系ラーメン・サンマー麺
+- [新潟県](https://ramen-quiz.com/regions/niigata): 新潟五大ラーメン
+- [福岡県](https://ramen-quiz.com/regions/fukuoka): 博多・久留米・長浜
+- [沖縄県](https://ramen-quiz.com/regions/okinawa): 沖縄そば・ソーキそば

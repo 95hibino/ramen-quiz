@@ -3,6 +3,6 @@
 # 形式: <ドメイン>, <パブリッシャーID>, <関係種別>, <認証局ID>
 # 詳細: https://support.google.com/adsense/answer/7532444
 #
-# デプロイ後は https://ramen-quiz-ten.vercel.app/ads.txt で公開されます。
+# デプロイ後は https://ramen-quiz.com/ads.txt で公開されます。
 # AdSense 管理画面 → 収益化 → サイト の「承認済み」表示になれば OK。
 google.com, pub-6954101208482692, DIRECT, f08c47fec0942fa0

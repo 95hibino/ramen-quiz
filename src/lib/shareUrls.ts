@@ -140,7 +140,7 @@ export interface OgImageParams {
  *
  * @example
  *   buildOgImageUrl({ score: 87, max: 100, category: '中級', username: '大森商事' })
- *   // → 'https://ramen-quiz-ten.vercel.app/api/og?score=87&max=100&category=%E4%B8%AD%E7%B4%9A&username=%E5%A4%A7%E6%A3%AE%E5%95%86%E4%BA%8B&type=knowledge'
+ *   // → 'https://ramen-quiz.com/api/og?score=87&max=100&category=%E4%B8%AD%E7%B4%9A&username=%E5%A4%A7%E6%A3%AE%E5%95%86%E4%BA%8B&type=knowledge'
  */
 export function buildOgImageUrl(params: OgImageParams): string {
   const search = new URLSearchParams();

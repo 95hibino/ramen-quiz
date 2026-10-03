@@ -19,7 +19,7 @@ import { Helmet } from 'react-helmet-async';
  *   '@context': 'https://schema.org',
  *   '@type': 'WebSite',
  *   name: 'ラーメンクイズ',
- *   url: 'https://ramen-quiz-ten.vercel.app',
+ *   url: 'https://ramen-quiz.com',
  * }} />
  * ```
  */
