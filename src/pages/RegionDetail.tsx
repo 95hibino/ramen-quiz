@@ -4,7 +4,11 @@ import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
 import { NotFound } from '@/pages/NotFound';
-import { findRegionalRamenBySlug, type RamenType } from '@/data/regionalRamen';
+import {
+  findRegionalRamenBySlug,
+  type FamousShop,
+  type RamenType,
+} from '@/data/regionalRamen';
 import { GLOSSARY_TERMS, type GlossaryTerm } from '@/content/glossary';
 
 /**
@@ -115,6 +119,26 @@ export function RegionDetail(): JSX.Element {
         </ul>
       </section>
 
+      {data.famousShops && data.famousShops.length > 0 ? (
+        <section className="space-y-4">
+          <h2 className="border-b border-ramen-soy/10 pb-1 text-base font-bold text-ramen-soy">
+            {data.prefecture} の代表的なラーメン店
+          </h2>
+          <ul className="space-y-4">
+            {data.famousShops.map((shop) => (
+              <li key={shop.name}>
+                <ShopCard shop={shop} />
+              </li>
+            ))}
+          </ul>
+          {data.shopsCheckedAt ? (
+            <p className="text-xs text-ramen-soy/60">
+              ※ 店舗情報は {data.shopsCheckedAt} 時点で確認した内容です。営業時間・定休日・メニューは変わることがあるため、訪問前に各店の最新情報をご確認ください。
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {data.relatedTerms && data.relatedTerms.length > 0 ? (
         <RelatedTermsSection termIds={data.relatedTerms} />
       ) : null}
@@ -151,6 +175,24 @@ function RamenCard({ ramen }: { ramen: RamenType }): JSX.Element {
         <DetailRow label="トッピング" value={ramen.toppings} />
         {ramen.origin ? <DetailRow label="発祥" value={ramen.origin} /> : null}
         {ramen.area ? <DetailRow label="提供エリア" value={ramen.area} /> : null}
+      </dl>
+    </article>
+  );
+}
+
+/**
+ * 代表的なラーメン店をカード形式で表示する。
+ * 場所 / 味 / 評価 / 歩み を項目別に列挙 (裏取り元の sources は表示しない)。
+ */
+function ShopCard({ shop }: { shop: FamousShop }): JSX.Element {
+  return (
+    <article className="rounded-lg border border-ramen-soy/10 bg-white/60 px-3 py-3">
+      <h3 className="text-sm font-bold text-ramen-soy sm:text-base">{shop.name}</h3>
+      <dl className="mt-2 space-y-2 border-t border-ramen-soy/10 pt-2 text-sm leading-relaxed text-ramen-soy/90">
+        <DetailRow label="場所" value={shop.location} />
+        <DetailRow label="味" value={shop.taste} />
+        <DetailRow label="評価" value={shop.reputation} />
+        {shop.history ? <DetailRow label="歩み" value={shop.history} /> : null}
       </dl>
     </article>
   );
