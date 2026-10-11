@@ -163,7 +163,7 @@ export function Home(): JSX.Element {
           />
           <ReadingLink
             to="/regions"
-            title={`都道府県別ご当地ラーメン（${REGIONAL_RAMEN.length} 県）`}
+            title={`都道府県別ご当地ラーメン（${REGIONAL_RAMEN.length} 都道府県）`}
             description="札幌味噌・喜多方・富山ブラック・博多豚骨・沖縄そばまで。各県の代表系統のスープ・麺・発祥・食文化を解説。"
           />
           <ReadingLink
