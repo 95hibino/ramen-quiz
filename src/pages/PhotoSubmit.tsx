@@ -12,7 +12,6 @@ import {
   optimizeImage,
   type OptimizedImage,
 } from '@/lib/imageOptimizer';
-import { moderateImage } from '@/lib/imageModeration';
 import { PREFECTURES, isValidPrefecture, type Prefecture } from '@/data/prefectures';
 import {
   DIFFICULTY_OPTIONS,
@@ -103,7 +102,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitState, setSubmitState] = useState<
-    'idle' | 'moderating' | 'submitting' | 'success' | 'error'
+    'idle' | 'submitting' | 'success' | 'error'
   >('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -236,7 +235,6 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
     !imageError &&
     agreedToTerms &&
     submitState !== 'submitting' &&
-    submitState !== 'moderating' &&
     supabaseReady;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -293,33 +291,20 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
       return;
     }
 
-    // 1) Cloud Vision SafeSearch モデレーション。
-    //    GOOGLE_VISION_API_KEY 未設定 or Vision API 障害時は disabled: true が返り、
-    //    投稿は素通りする (Fail-Open)。安全でない画像は reason を UI に表示して中止。
-    setSubmitState('moderating');
-    try {
-      const moderation = await moderateImage(optimized.blob);
-      if (!moderation.safe) {
-        setSubmitError(moderation.reason ?? '画像が不適切と判定されたため投稿できません。');
-        setSubmitState('error');
-        return;
-      }
-    } catch (err) {
-      // moderateImage 内で fetch エラーは既に握り潰されるためここには通常来ない。
-      // 万一に備えたセーフティネット。
-      console.warn('[PhotoSubmit] moderation call threw:', err);
-    }
-
-    // 2) Supabase に投稿。
+    // 画像の審査 (Cloud Vision SafeSearch) は登録と同時にサーバ側で行う
+    // (api/submit-photo-question.ts)。ブラウザ側で審査を飛ばす経路を残さないため。
     setSubmitState('submitting');
     try {
-      await compositePhotoQuestionRepository.submit(submission, optimized.blob);
+      const { pendingReview } = await compositePhotoQuestionRepository.submit(
+        submission,
+        optimized.blob,
+      );
       setSubmitState('success');
-      setToast('投稿しました');
-      // 1 秒だけトーストを見せてから一覧へ
+      setToast(pendingReview ? '投稿を受け付けました。運営の確認後に公開されます' : '投稿しました');
+      // 少しだけトーストを見せてから一覧へ
       window.setTimeout(() => {
         onSuccess();
-      }, 800);
+      }, pendingReview ? 2000 : 800);
     } catch (err) {
       if (err instanceof RateLimitError) {
         setSubmitError(formatRateLimitMessage(err.retryAfterSeconds));
@@ -710,11 +695,7 @@ function PhotoSubmitForm({ submitterId, onSuccess }: PhotoSubmitFormProps): JSX.
             disabled={!isFormReady}
             aria-disabled={!isFormReady}
           >
-            {submitState === 'moderating'
-              ? '画像を検査中...'
-              : submitState === 'submitting'
-                ? '送信中...'
-                : '投稿する'}
+            {submitState === 'submitting' ? '画像を確認して送信中...' : '投稿する'}
           </button>
           {!supabaseReady ? (
             <p className="text-xs font-bold text-ramen-chili">

@@ -6,9 +6,9 @@
 ## 概要
 
 - **保護対象**: 投稿写真の `adult` / `violence` / `racy` を機械判定
-- **判定タイミング**: 投稿ボタン押下時 → Supabase Storage への PUT 前
+- **判定タイミング**: 投稿時。ブラウザが Storage に置いた画像を `api/submit-photo-question.ts` が取得して判定し、通ったものだけ DB に登録する (docs/SUPABASE_SETUP.md §26)
 - **拒否時挙動**: エラーメッセージを表示、投稿は中止
-- **未設定時挙動**: 完全にスキップ (既存挙動と同じ) → 段階的に有効化可能
+- **未設定時挙動**: 審査せず `moderation_status = 'pending'` (非公開) で受け付け、社長が確認して公開する
 
 ## コスト
 
@@ -20,9 +20,12 @@
 
 現状の投稿ペース (数枚/日) では **完全無料枠に収まります**。
 
-コスト暴走リスクは以下で二重に抑制:
-1. 既存の投稿レート制限 (同一ユーザーから 5 分に 1 投稿、docs/SUPABASE_SETUP.md §7)
-2. 本 Serverless Function 側で画像サイズ上限 (base64 15MB)
+コスト暴走リスクは以下で抑制 (docs/SUPABASE_SETUP.md §26):
+1. 審査 API はログイン必須。Vision を呼ぶ前に DB の `reserve_photo_moderation` で回数を確保する
+   (1 人 1 分に 1 回・1 日 10 回、投稿の 5 分制限中は審査しない)
+2. 全体で 1 日 100 回を超えたら審査せず pending で受け付ける
+3. 取得する画像は 600KB まで
+4. GCP 側でも API の 1 日あたり割り当て上限と予算アラートを設定しておく (最後の歯止め)
 
 ## 手順
 
@@ -64,13 +67,14 @@ GCP は無料枠の利用でも請求先アカウントの登録が必要です�
 
 1. サイトを開いてログイン
 2. `/quiz/photo/submit` にアクセス
-3. 通常のラーメン写真で投稿 → 「画像を検査中...」 → 「送信中...」 → 「投稿しました」
+3. 通常のラーメン写真で投稿 → 「画像を確認して送信中...」 → 「投稿しました」
+   (「運営の確認後に公開されます」と出たら審査できていない。Function Logs を確認)
 4. (テスト用) 明らかに不適切な画像で投稿 → 「画像に成人向けコンテンツが検出されたため投稿できません」
 5. Google Cloud Console → **Cloud Vision API** → **指標** で呼び出し回数を確認
 
 ## しきい値の設計
 
-`api/moderate-image.ts` の `judge()` 関数で判定ロジックを定義:
+`api/submit-photo-question.ts` の `judge()` 関数で判定ロジックを定義:
 
 | カテゴリ | 判定 | 理由 |
 |---|---|---|
@@ -81,27 +85,27 @@ GCP は無料枠の利用でも請求先アカウントの登録が必要です�
 | `spoof` | 無視 | ミーム・加工画像は許容 |
 
 `POSSIBLE` は誤検知が多いためスルー。しきい値を厳しくしたい場合は
-`isBadLikelihood()` を `POSSIBLE` も含めるように変更してください。
+`judge()` 内の `isBad` を `POSSIBLE` も含めるように変更してください。
 
-## Fail-Open 設計
+## 審査できなかったときの扱い (保留)
 
-以下の状況では投稿を **通す** 設計です:
+以下の状況では投稿を拒否せず、**非公開 (`moderation_status = 'pending'`) で受け付けます**:
 
-- `GOOGLE_VISION_API_KEY` 未設定 (社長が未セットアップ)
+- `GOOGLE_VISION_API_KEY` 未設定
 - Vision API 到達失敗 (ネットワーク・Google 障害)
 - Vision API 401/403 (API キー期限切れ・権限不足)
-- Vision API 応答パース失敗
+- Vision API 応答パース失敗、判定結果が空
+- 全体の 1 日上限 (100 回) 超過
 
-理由: Google 側の障害でサイト全体の投稿機能を止めるのはユーザー体験を害するため。
-不適切投稿が万一通っても、既存の **通報機能** (docs/SUPABASE_SETUP.md §9) と
-**社長による削除運用** (`scripts/admin/delete_user_question.ts`) で事後対応可能。
+投稿者には「運営の確認後に公開されます」と表示されます。
+社長は docs/SUPABASE_SETUP.md §26「社長の運用 SQL」で確認待ちの投稿を見て、公開か非表示を決めます。
 
-Fail-Closed に変更したい場合は `api/moderate-image.ts` の
-「Fail-Open」コメント箇所を `{ safe: false, reason: '...' }` に変更してください。
+以前は Fail-Open (審査できなければそのまま公開) でしたが、2026-10 の脆弱性監査で
+「審査を素通りした画像が即出題される」ことが AdSense ポリシー上のリスクと判断し、保留に変えました。
 
 ## トラブルシューティング
 
-### 「投稿は許可」というログが常に出る
+### 「審査できなかったため非公開で受け付けます」というログが常に出る
 - Vercel Environment Variables に `GOOGLE_VISION_API_KEY` が入っていない、または typo
 - Redeploy を実行しているか確認
 - Vercel Functions のログ (Deployments → Function Logs) で警告メッセージを確認

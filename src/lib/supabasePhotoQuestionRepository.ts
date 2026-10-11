@@ -2,12 +2,12 @@
  * Supabase 実装の写真クイズリポジトリ。
  *
  * - `findByFilter` / `countByFilter` / `findByIds`: 公開ビュー `public_photo_questions` から取得
- * - `findBySubmitterId` / `submit`: ベーステーブル `user_photo_questions` を直接操作
- * - `submit`: 画像 Blob を Storage に PUT → 公開 URL を取得 → メタを DB に INSERT
+ * - `findBySubmitterId`: ベーステーブル `user_photo_questions` を直接読む (自分の投稿のみ)
+ * - `submit`: 画像 Blob を Storage に PUT → `/api/submit-photo-question` が審査して登録
  *
- * 読み書きで参照先が分かれているのは §24 の RLS 設計による。
+ * 読み書きで参照先が分かれているのは §24 / §26 の RLS 設計による。
  * ベーステーブルは「自分の投稿しか SELECT できない」ので出題には使えず、
- * ビューは読み取り専用なので投稿には使えない。
+ * INSERT 権限は無い (審査を通す RPC だけが登録経路)。
  *
  * 未接続環境 (環境変数なし) では Supabase 呼び出しを行わず空配列を返す。
  * 通常はこのリポジトリ単体で使わず、`compositePhotoQuestionRepository` 経由で
@@ -21,7 +21,6 @@ import type {
   PhotoType,
   RamenType,
 } from '@/types/photoQuestion';
-import { PHOTO_QUIZ_QUESTION_TEXT } from '@/types/photoQuestion';
 import { isValidPrefecture } from '@/data/prefectures';
 import {
   getSupabaseClient,
@@ -33,6 +32,7 @@ import {
   matchesFilter,
   type PhotoQuestionRepository,
   type PhotoQuestionSubmission,
+  type PhotoQuestionSubmitResult,
 } from './photoQuestionRepository';
 
 /**
@@ -57,17 +57,38 @@ export class RateLimitError extends Error {
   }
 }
 
-/**
- * Supabase の PostgrestError メッセージから `rate_limit_exceeded:<秒数>` を検出する。
- * 該当しない場合は `null`。
- */
-function parseRateLimitMessage(message: string | undefined | null): number | null {
-  if (!message) return null;
-  const match = message.match(/rate_limit_exceeded:(\d+)/);
-  if (!match) return null;
-  const seconds = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(seconds) || seconds < 0) return null;
-  return seconds;
+/** 投稿の登録窓口 (api/submit-photo-question.ts)。 */
+const SUBMIT_ENDPOINT = '/api/submit-photo-question';
+
+/** 投稿 API の応答。成功時は `status` と `question`、失敗時は `error` が入る。 */
+interface SubmitResponseBody {
+  status?: 'approved' | 'pending';
+  question?: UserPhotoQuestionRow;
+  error?: string;
+  reason?: string;
+  detail?: string;
+  retryAfterSeconds?: number;
+}
+
+/** 投稿 API の失敗応答を、利用者が次に何をすればよいか分かるエラーに変換する。 */
+function submitErrorFromResponse(status: number, body: SubmitResponseBody | null): Error {
+  const code = body?.error;
+  if (code === 'rate_limit_exceeded' && typeof body?.retryAfterSeconds === 'number') {
+    return new RateLimitError(body.retryAfterSeconds);
+  }
+  if (code === 'image_rejected') {
+    return new Error(body?.reason ?? '画像が不適切と判定されたため投稿できません。');
+  }
+  if (code === 'not_authenticated' || code === 'profile_not_found' || status === 401) {
+    return new Error('投稿の権限を確認できませんでした。ログインし直してからもう一度お試しください。');
+  }
+  if (code === 'invalid_submission') {
+    return new Error(`入力内容を確認してください: ${body?.detail ?? ''}`.trim());
+  }
+  if (code === 'server_not_configured') {
+    return new Error('現在、投稿を受け付けられません。時間をおいてお試しください。');
+  }
+  return new Error(`投稿の登録に失敗しました (${code ?? status})。時間をおいてお試しください。`);
 }
 
 /** Supabase 行 -> ドメイン型 へのマッピング用の row 型。 */
@@ -265,13 +286,18 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
   async submit(
     data: PhotoQuestionSubmission,
     image: Blob,
-  ): Promise<PhotoQuestion> {
+  ): Promise<PhotoQuestionSubmitResult> {
     const client = getSupabaseClient();
     if (!client) {
       throw new Error('Supabase が未接続のため投稿できません。');
     }
+    const { data: sessionData } = await client.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      throw new Error('ログインの有効期限が切れています。ログインし直してからもう一度お試しください。');
+    }
 
-    // 1) Storage に画像 PUT
+    // 1) Storage に画像 PUT (まだ出題には使われない。登録は 2) のサーバ側で行う)
     const imagePath = generateImagePath();
     const uploadResult = await client.storage
       .from(SUPABASE_STORAGE_BUCKET)
@@ -282,7 +308,7 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
       });
     if (uploadResult.error) {
       // §24 で Storage の INSERT も authenticated 限定にした。
-      // セッション切れのときは RLS 違反として弾かれるので、DB INSERT 側と同じ案内に揃える。
+      // セッション切れのときは RLS 違反として弾かれるので、登録側と同じ案内に揃える。
       if (/row-level security|Unauthorized|violates/i.test(uploadResult.error.message)) {
         throw new Error(
           '画像の権限を確認できませんでした。ログインし直してからもう一度お試しください。',
@@ -291,64 +317,50 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
       throw new Error(`画像アップロードに失敗しました: ${uploadResult.error.message}`);
     }
 
-    // 2) DB に INSERT
-    // 問題文は全問共通の固定文字列 (PHOTO_QUIZ_QUESTION_TEXT) を必ずセットする。
-    // ユーザー入力ではなく、DB 側 CHECK 制約もこの値以外を拒否する設計。
-    const insertPayload = {
-      submitter_id: data.submitterId,
-      // 明示的に true を渡されたときだけ公開。undefined や不正値は非公開に倒す。
-      show_submitter: data.showSubmitter === true,
-      image_path: imagePath,
-      ramen_type: data.ramenType,
+    // 2) 審査 + 登録はサーバ経由のみ (docs/SUPABASE_SETUP.md §26)。
+    //    DB への直接 INSERT 権限は無いので、ここを通さない投稿は成立しない。
+    //    submitter_id はサーバ側で auth.uid() から決まるため送らない。
+    //    問題文も DB 側で固定文字列 (PHOTO_QUIZ_QUESTION_TEXT と同じ) をセットする。
+    const submission = {
+      showSubmitter: data.showSubmitter === true,
+      ramenType: data.ramenType,
       prefecture: data.prefecture,
-      photo_type: data.photoType,
+      photoType: data.photoType,
       difficulty: data.difficulty,
-      noodle_thickness: data.noodleThickness ?? null,
-      question: PHOTO_QUIZ_QUESTION_TEXT,
+      noodleThickness: data.noodleThickness ?? null,
       options: data.options,
-      answer_idx: data.answerIdx,
+      answerIdx: data.answerIdx,
       explanation: data.explanation ?? null,
-      shop_info: data.shopInfo,
+      shopInfo: data.shopInfo,
     };
 
-    const { data: inserted, error } = await client
-      .from(USER_PHOTO_QUESTIONS_TABLE)
-      .insert(insertPayload)
-      .select(SELECT_COLUMNS)
-      .single();
-
-    if (error || !inserted) {
-      // Storage に画像だけ残るのを避けるためロールバック試行 (失敗しても投稿エラー扱い)
-      await client.storage.from(SUPABASE_STORAGE_BUCKET).remove([imagePath]).catch(() => undefined);
-
-      // レート制限トリガーからの専用エラーは構造化された RateLimitError に変換する。
-      // PostgrestError は `message` 以外に `details` / `hint` にも文言が入り得るため広めに探す。
-      const composite = [error?.message, error?.details, error?.hint]
-        .filter((s): s is string => typeof s === 'string')
-        .join(' | ');
-      const retryAfter = parseRateLimitMessage(composite);
-      if (retryAfter !== null) {
-        throw new RateLimitError(retryAfter);
-      }
-
-      // §24 の INSERT ポリシーは submitter_id がログイン中のユーザー名と一致することを求める。
-      // セッション切れや、プロフィール未作成の状態で投稿するとここに落ちる。
-      // 生の RLS メッセージは利用者に意味が伝わらないので、行動を書いた文言に差し替える。
-      if (error?.code === '42501' || /row-level security/i.test(composite)) {
-        throw new Error(
-          '投稿の権限を確認できませんでした。ログインし直してからもう一度お試しください。',
-        );
-      }
-
-      throw new Error(`投稿の登録に失敗しました: ${error?.message ?? '不明なエラー'}`);
+    let res: Response;
+    try {
+      res = await fetch(SUBMIT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ imagePath, submission }),
+      });
+    } catch {
+      throw new Error('サーバーに接続できませんでした。通信環境を確認してもう一度お試しください。');
     }
 
-    const row = inserted as unknown as UserPhotoQuestionRow;
-    const result = rowToPhotoQuestion(row);
+    const body = (await res.json().catch(() => null)) as SubmitResponseBody | null;
+    if (!res.ok || !body || !body.question) {
+      // 失敗時は置いた画像の削除を試みる。DELETE ポリシーが無い環境では
+      // 失敗するが、URL は推測不能な乱数なので害は無く、投稿エラーの扱いは変えない。
+      await client.storage.from(SUPABASE_STORAGE_BUCKET).remove([imagePath]).catch(() => undefined);
+      throw submitErrorFromResponse(res.status, body);
+    }
+
+    const result = rowToPhotoQuestion(body.question);
     if (!result) {
       throw new Error('投稿は登録されましたが、レスポンスのパースに失敗しました。');
     }
-    return result;
+    return { question: result, pendingReview: body.status === 'pending' };
   },
 
   async findBySubmitterId(submitterId: string): Promise<PhotoQuestion[]> {

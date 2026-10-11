@@ -2730,3 +2730,611 @@ CREATE POLICY "public_storage_select" ON storage.objects
   「出題画面に画像を出す」以上どうやっても避けられない
 - 乱数 128bit のパスは推測できないので、**URL を知らない第三者が
   総当たりで画像を見つけることはできない**
+
+---
+
+## §26 写真投稿の画像審査をサーバ側で強制する (2026-10 脆弱性監査 #1 / #4)
+
+### 塞ぐ穴
+
+**穴 1 — 審査の素通り**
+
+画像審査 (Cloud Vision SafeSearch) はブラウザが `/api/moderate-image` を呼んで結果を見るだけで、
+その後の Storage アップロードと DB INSERT はブラウザが直接行っていた。
+ログイン中のユーザーが Supabase の API を直接叩けば、**審査を通さずに投稿でき、`is_hidden = false` なので即出題される**。
+
+**穴 2 — 審査 API の課金を他人が消費できる**
+
+`/api/moderate-image` は認証もレート制限も無く、外部から連打すると Cloud Vision の料金が増えた。
+
+### 方針
+
+| | 対策 |
+|---|---|
+| 登録経路 | `user_photo_questions` への直接 INSERT ポリシーを削除。登録は `submit_photo_question` RPC だけにし、この RPC は **Vercel だけが知る共有シークレット** が無いと動かない |
+| 審査 | `api/submit-photo-question.ts` が、Storage に置かれた画像そのものを取得して審査する (審査用と投稿用で画像を差し替えられない) |
+| 審査できなかったとき | Vision のキー未設定・障害・全体上限超過のときは `moderation_status = 'pending'` (非公開) で受け付け、社長が確認して公開する |
+| 課金 | `reserve_photo_moderation` で審査回数を DB に記録して制限 (1 人 1 分に 1 回・1 日 10 回、全体 1 日 100 回を超えたら審査せず pending) |
+| 旧 API | `/api/moderate-image` は 410 を返すだけにした |
+
+service_role キーは Vercel に置かない。RPC はユーザー本人のトークンで呼ばれ、投稿者は `auth.uid()` から DB が決める。
+シークレットが漏れても「ログイン中の本人として、審査済み扱いで投稿できる」だけで、他人の名前での投稿や既存データの改ざんはできない。
+
+### 作業順 (この順で行うこと)
+
+1. 下の SQL を実行する (最後にシークレットが表示される)
+2. Vercel → Settings → Environment Variables に `PHOTO_SUBMIT_SECRET` (Production / Preview) として登録する
+3. 新しいフロントと API をデプロイする
+
+1 から 3 の間は、旧フロントからの投稿が「権限を確認できませんでした」で失敗する。数分で済ませること。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================================
+-- 1. 審査状態の列。既存の投稿はすべて公開済み (approved) 扱い
+-- ==========================================================
+ALTER TABLE user_photo_questions
+  ADD COLUMN IF NOT EXISTS moderation_status TEXT NOT NULL DEFAULT 'approved'
+  CHECK (moderation_status IN ('approved', 'pending'));
+
+-- ==========================================================
+-- 2. 非公開スキーマ (PostgREST に公開されない) に設定と審査履歴を置く
+--    RLS は二重の守り。読み書きするのは所有者 (postgres) の SECURITY DEFINER 関数だけで、
+--    所有者には RLS が掛からないため、ポリシーを作らなくても関数は動く
+-- ==========================================================
+CREATE SCHEMA IF NOT EXISTS private;
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS private.app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+ALTER TABLE private.app_settings ENABLE ROW LEVEL SECURITY;  -- ポリシー無し = 一般ロールは全拒否
+REVOKE ALL ON private.app_settings FROM PUBLIC, anon, authenticated;
+
+INSERT INTO private.app_settings (key, value)
+VALUES ('photo_submit_secret', encode(extensions.gen_random_bytes(32), 'hex'))
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS private.photo_moderation_attempts (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_photo_moderation_attempts_user
+  ON private.photo_moderation_attempts (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_photo_moderation_attempts_created
+  ON private.photo_moderation_attempts (created_at);
+ALTER TABLE private.photo_moderation_attempts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON private.photo_moderation_attempts FROM PUBLIC, anon, authenticated;
+
+-- ==========================================================
+-- 3. 審査枠の確保。Vision を呼ぶ前に API が必ず呼ぶ
+--    戻り値: 'moderate' = 審査する / 'skip' = 全体上限のため審査せず pending で受け付ける
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.reserve_photo_moderation(p_secret TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  -- 調整するならここ
+  c_user_interval  CONSTANT INTERVAL := INTERVAL '1 minute';
+  c_user_daily_max CONSTANT INT := 10;
+  c_global_daily   CONSTANT INT := 100;
+  v_uid      UUID := auth.uid();
+  v_username TEXT;
+  v_last     TIMESTAMPTZ;
+  v_oldest   TIMESTAMPTZ;
+  v_count    INT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+  IF p_secret IS NULL OR p_secret IS DISTINCT FROM
+     (SELECT value FROM private.app_settings WHERE key = 'photo_submit_secret') THEN
+    RAISE EXCEPTION 'invalid_secret';
+  END IF;
+
+  -- 同じユーザーの同時実行で上限をすり抜けないよう直列化する
+  PERFORM pg_advisory_xact_lock(hashtext('photo_moderation:' || v_uid::text));
+
+  SELECT username INTO v_username FROM public_profiles WHERE id = v_uid::text;
+  IF v_username IS NULL THEN
+    RAISE EXCEPTION 'profile_not_found';
+  END IF;
+
+  -- 投稿の 5 分制限 (enforce_submit_rate_limit と同じ値)。どうせ登録で弾かれるので審査前に止める
+  SELECT MAX(created_at) INTO v_last FROM user_photo_questions WHERE submitter_id = v_username;
+  IF v_last IS NOT NULL AND v_last > NOW() - INTERVAL '5 minutes' THEN
+    RAISE EXCEPTION 'rate_limit_exceeded:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_last + INTERVAL '5 minutes' - NOW())))::INT);
+  END IF;
+
+  -- 審査の連打 (不適切画像を何度も送る等) を止める
+  SELECT MAX(created_at) INTO v_last
+    FROM private.photo_moderation_attempts WHERE user_id = v_uid;
+  IF v_last IS NOT NULL AND v_last > NOW() - c_user_interval THEN
+    RAISE EXCEPTION 'rate_limit_exceeded:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_last + c_user_interval - NOW())))::INT);
+  END IF;
+
+  SELECT COUNT(*), MIN(created_at) INTO v_count, v_oldest
+    FROM private.photo_moderation_attempts
+    WHERE user_id = v_uid AND created_at > NOW() - INTERVAL '24 hours';
+  IF v_count >= c_user_daily_max THEN
+    RAISE EXCEPTION 'rate_limit_exceeded:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_oldest + INTERVAL '24 hours' - NOW())))::INT);
+  END IF;
+
+  SELECT COUNT(*) INTO v_count
+    FROM private.photo_moderation_attempts WHERE created_at > NOW() - INTERVAL '24 hours';
+
+  INSERT INTO private.photo_moderation_attempts (user_id) VALUES (v_uid);
+
+  IF v_count >= c_global_daily THEN
+    RETURN 'skip';
+  END IF;
+  RETURN 'moderate';
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.reserve_photo_moderation(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.reserve_photo_moderation(TEXT) TO authenticated;
+
+-- ==========================================================
+-- 4. 投稿の登録。user_photo_questions に書き込める唯一の経路 (service_role を除く)
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.submit_photo_question(
+  p_secret            TEXT,
+  p_moderation_status TEXT,
+  p_image_path        TEXT,
+  p_show_submitter    BOOLEAN,
+  p_ramen_type        TEXT,
+  p_prefecture        TEXT,
+  p_photo_type        TEXT,
+  p_difficulty        TEXT,
+  p_noodle_thickness  TEXT,
+  p_options           JSONB,
+  p_answer_idx        INT,
+  p_explanation       TEXT,
+  p_shop_info         JSONB
+) RETURNS user_photo_questions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_uid      UUID := auth.uid();
+  v_username TEXT;
+  new_row    user_photo_questions;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+  IF p_secret IS NULL OR p_secret IS DISTINCT FROM
+     (SELECT value FROM private.app_settings WHERE key = 'photo_submit_secret') THEN
+    RAISE EXCEPTION 'invalid_secret';
+  END IF;
+  IF p_moderation_status IS NULL OR p_moderation_status NOT IN ('approved', 'pending') THEN
+    RAISE EXCEPTION 'invalid_moderation_status';
+  END IF;
+  IF p_image_path IS NULL
+     OR p_image_path !~ '^submissions/[0-9]{4}/[0-9]{2}/[0-9a-f]{32}\.webp$' THEN
+    RAISE EXCEPTION 'invalid_image_path';
+  END IF;
+
+  -- 画像は本人がアップロードしたもので、まだどの問題にも使われていないこと
+  IF NOT EXISTS (
+    SELECT 1 FROM storage.objects o
+    WHERE o.bucket_id = 'photo-quiz-user' AND o.name = p_image_path AND o.owner = v_uid
+  ) THEN
+    RAISE EXCEPTION 'image_not_owned';
+  END IF;
+  IF EXISTS (SELECT 1 FROM user_photo_questions WHERE image_path = p_image_path) THEN
+    RAISE EXCEPTION 'image_already_used';
+  END IF;
+
+  SELECT username INTO v_username FROM public_profiles WHERE id = v_uid::text;
+  IF v_username IS NULL THEN
+    RAISE EXCEPTION 'profile_not_found';
+  END IF;
+
+  -- レート制限トリガー (enforce_submit_rate_limit) と CHECK 制約はここでも効く
+  INSERT INTO user_photo_questions (
+    submitter_id, show_submitter, image_path, ramen_type, prefecture, photo_type,
+    difficulty, noodle_thickness, question, options, answer_idx, explanation, shop_info,
+    moderation_status
+  ) VALUES (
+    v_username, COALESCE(p_show_submitter, false), p_image_path, p_ramen_type, p_prefecture,
+    p_photo_type, p_difficulty, p_noodle_thickness, 'この画像はどこの店のものですか？',
+    p_options, p_answer_idx, p_explanation, p_shop_info, p_moderation_status
+  )
+  RETURNING * INTO new_row;
+
+  RETURN new_row;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.submit_photo_question(
+  TEXT, TEXT, TEXT, BOOLEAN, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INT, TEXT, JSONB
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_photo_question(
+  TEXT, TEXT, TEXT, BOOLEAN, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INT, TEXT, JSONB
+) TO authenticated;
+
+-- ==========================================================
+-- 5. 直接 INSERT を閉じる (§24 の photo_questions_insert_own を破棄)
+-- ==========================================================
+DROP POLICY IF EXISTS "photo_questions_insert_own" ON user_photo_questions;
+DROP POLICY IF EXISTS "public_photo_questions_insert" ON user_photo_questions;
+DROP POLICY IF EXISTS "anon_insert" ON user_photo_questions;
+
+-- ==========================================================
+-- 6. Storage: 置けるパスを乱数形式に限定し、未使用の自分の画像だけ削除できるようにする
+--    (審査で弾かれた画像の後始末をブラウザが行うため)
+-- ==========================================================
+DROP POLICY IF EXISTS "authenticated_storage_insert" ON storage.objects;
+CREATE POLICY "authenticated_storage_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'photo-quiz-user'
+    AND name ~ '^submissions/[0-9]{4}/[0-9]{2}/[0-9a-f]{32}\.webp$'
+  );
+
+DROP POLICY IF EXISTS "storage_delete_own_unused" ON storage.objects;
+CREATE POLICY "storage_delete_own_unused" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'photo-quiz-user'
+    AND owner = auth.uid()
+    AND NOT EXISTS (
+      SELECT 1 FROM public.user_photo_questions q WHERE q.image_path = objects.name
+    )
+  );
+
+-- ==========================================================
+-- 7. 公開ビューは審査済みだけを出す (列は §24 と同じ)
+-- ==========================================================
+CREATE OR REPLACE VIEW public_photo_questions AS
+SELECT
+  q.id,
+  CASE WHEN q.show_submitter THEN q.submitter_id ELSE NULL END AS submitter_id,
+  q.show_submitter,
+  q.image_path,
+  q.ramen_type,
+  q.prefecture,
+  q.photo_type,
+  q.difficulty,
+  q.noodle_thickness,
+  q.question,
+  q.options,
+  q.answer_idx,
+  q.explanation,
+  q.shop_info,
+  q.created_at
+FROM user_photo_questions q
+WHERE q.is_hidden = false
+  AND q.moderation_status = 'approved';
+
+REVOKE ALL ON public_photo_questions FROM anon, authenticated;
+GRANT SELECT ON public_photo_questions TO anon, authenticated;
+
+-- ==========================================================
+-- 8. シークレットを表示 → Vercel の PHOTO_SUBMIT_SECRET に登録する
+-- ==========================================================
+SELECT value AS photo_submit_secret FROM private.app_settings WHERE key = 'photo_submit_secret';
+```
+
+> `storage_delete_own_unused` の `NOT EXISTS` は投稿者本人の権限で評価される。§24 の
+> `photo_questions_select_own` で本人は自分の投稿を読めるため、「自分の問題に使われている画像」は消せない。
+
+### Vercel の環境変数
+
+| キー | 値 | 備考 |
+|---|---|---|
+| `PHOTO_SUBMIT_SECRET` | 上の SQL の最後に表示された 64 桁 | **新規**。Git やフロント (`VITE_` 付き) には置かない |
+| `GOOGLE_VISION_API_KEY` | 既存 | 未設定なら全投稿が pending (社長確認待ち) になる |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | 既存 | API もこの値を読む |
+
+GCP 側でも Cloud Vision API の「1 日あたりのリクエスト数」の割り当て上限と予算アラートを設定しておくこと
+(DB 側の上限が何らかの理由で効かなかった場合の最後の歯止め)。
+
+### 社長の運用 SQL
+
+```sql
+-- 確認待ちの投稿
+SELECT id, submitter_id, image_path, shop_info->>'name' AS shop, created_at
+FROM user_photo_questions WHERE moderation_status = 'pending' ORDER BY created_at;
+-- 画像は https://<PROJECT>.supabase.co/storage/v1/object/public/photo-quiz-user/<image_path> で見る
+
+-- 公開する
+UPDATE user_photo_questions SET moderation_status = 'approved' WHERE id = '<id>';
+
+-- 公開しない (画像は scripts/admin/delete_user_question.ts でまとめて消せる)
+UPDATE user_photo_questions SET is_hidden = true WHERE id = '<id>';
+```
+
+### 確認方法
+
+1. SQL 実行後、`SELECT policyname, cmd FROM pg_policies WHERE tablename = 'user_photo_questions';`
+   に INSERT が **無い** こと (SELECT の `photo_questions_select_own` だけ)
+2. デプロイ後、ログインして写真を投稿 → 「投稿しました」(Vision 有効時) が出て、写真クイズに出題される
+3. 続けてもう 1 件投稿 → 「あと N 分」の案内が出る
+4. **直接 INSERT が弾かれること** — ブラウザのコンソールで:
+   ```javascript
+   await supabase.from('user_photo_questions').insert({ /* 任意の値 */ })
+   // → new row violates row-level security policy
+   ```
+5. **シークレット無しで RPC を呼べないこと** — `supabase.rpc('submit_photo_question', { p_secret: 'x', ... })` → `invalid_secret`
+6. `curl -X POST https://ramen-quiz.com/api/moderate-image` → 410
+
+### ロールバック
+
+```sql
+CREATE POLICY "photo_questions_insert_own" ON user_photo_questions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    submitter_id = (SELECT p.username FROM public_profiles p WHERE p.id = auth.uid()::text)
+  );
+```
+
+フロントは旧版 (ブラウザから直接 INSERT する版) に戻す必要がある。ビューの `moderation_status` 条件は残しても害はない。
+
+---
+
+## §27 ユーザー名の規則を DB で強制する (2026-10 脆弱性監査 #2)
+
+### 塞ぐ穴
+
+§21 の規則 (使える文字・予約語・変更不可) はフロントの `validateUsername` だけが守っていた。
+
+| 経路 | 何ができたか |
+|---|---|
+| `create_public_profile` を直接呼ぶ | 予約語チェックが `_shacho` を例外にしているため、**誰でも `_shacho` を名乗れた** (運営なりすまし・写真投稿の 5 分制限の回避) |
+| `public_profiles` を直接 UPDATE (§11 の `auth_profiles_update`) | 文字数以外の検査が無く、`admin` / `運営` / 記号 / 絵文字への**改名**ができた (仕様上は変更不可) |
+
+### 方針
+
+`public_profiles` に BEFORE INSERT / UPDATE トリガーを張り、**ログイン中のユーザーからの書き込み**に限って次を強制する。
+
+- INSERT: NFKC 正規化済みであること・使える文字・予約語 (`_shacho` を含む全部)
+- UPDATE: `username` の変更を拒否 (都道府県・好きな店の変更は従来どおり可)
+
+SQL Editor や service_role (`auth.uid()` が NULL) からの操作は制限しない。運営用の `_shacho` プロフィールが必要なら SQL Editor から作る。
+
+既存ユーザーがスコア記録のたびに行う同名 upsert (`upsertPublicProfile` / `create_public_profile`) は、
+「同じ id・同じ名前の行が既にある」場合は検査を飛ばすので、§21 以前の規則で作られた名前のユーザーも引き続き遊べる。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================================
+-- 0. 事前確認: 予約語・規則外の名前を既に持っているプロフィール
+--    行が返ったら中身を見て、なりすましなら削除やリネームを検討する
+-- ==========================================================
+SELECT id, username, created_at
+FROM public_profiles
+WHERE lower(normalize(username, NFKC)) IN
+        ('_shacho','admin','administrator','root','support','official','system','運営','管理者')
+   OR username !~ '^[A-Za-z0-9_ぁ-ゟァ-ヿ々〆〇一-鿿-]+$'
+   OR username IS DISTINCT FROM btrim(normalize(username, NFKC));
+
+-- ==========================================================
+-- 1. トリガー関数
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.enforce_profile_username_rules()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  -- SQL Editor / service_role (社長の運用) は制限しない
+  IF auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.username IS DISTINCT FROM OLD.username THEN
+      RAISE EXCEPTION 'username_immutable';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- INSERT ... ON CONFLICT DO UPDATE で既存の自分の行を同じ名前で上書きするだけなら検査しない
+  -- (§21 以前の規則で作られた名前のユーザーがスコア記録できなくなるのを防ぐ)
+  IF EXISTS (SELECT 1 FROM public_profiles WHERE id = NEW.id AND username = NEW.username) THEN
+    RETURN NEW;
+  END IF;
+
+  -- 規則は src/lib/validation.ts の validateUsername と揃えること
+  IF NEW.username IS DISTINCT FROM btrim(normalize(NEW.username, NFKC)) THEN
+    RAISE EXCEPTION 'invalid_username: not normalized';
+  END IF;
+  IF NEW.username !~ '^[A-Za-z0-9_ぁ-ゟァ-ヿ々〆〇一-鿿-]+$' THEN
+    RAISE EXCEPTION 'invalid_username: characters';
+  END IF;
+  IF lower(NEW.username) IN
+     ('_shacho','admin','administrator','root','support','official','system','運営','管理者') THEN
+    RAISE EXCEPTION 'reserved_username';
+  END IF;
+
+  RETURN NEW;
+END;
+$fn$;
+
+DROP TRIGGER IF EXISTS trg_enforce_profile_username_rules ON public_profiles;
+CREATE TRIGGER trg_enforce_profile_username_rules
+  BEFORE INSERT OR UPDATE ON public_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_username_rules();
+```
+
+> `create_public_profile` (§21) の `_shacho` 例外はそのまま残るが、関数内の INSERT でこのトリガーが
+> 発火する (`auth.uid()` は SECURITY DEFINER の中でも呼び出し元のもの) ため、一般ユーザーは `_shacho` を取れない。
+
+### 確認方法
+
+1. 通常の新規登録・ログイン・クイズのスコア記録が今までどおりできること
+2. ブラウザのコンソールで改名を試す → `username_immutable`
+   ```javascript
+   await supabase.from('public_profiles').update({ username: '運営' }).eq('id', (await supabase.auth.getUser()).data.user.id)
+   ```
+3. 新規ユーザーで `supabase.rpc('create_public_profile', { p_username: '_shacho', p_prefecture: '東京都', p_favorite_shop: 'x' })`
+   → `reserved_username`
+
+### ロールバック
+
+```sql
+DROP TRIGGER IF EXISTS trg_enforce_profile_username_rules ON public_profiles;
+```
+
+---
+
+## §28 ランキングのスコアに上限を設ける (2026-10 脆弱性監査 #3)
+
+### 塞ぐ穴
+
+スコアはブラウザが計算して申告している。`record_quiz_score` の検査は「0〜100000 点」だけで、
+`record_best_score` (上限 10000 点) は authenticated から**直接**呼べた。
+さらに §11 の `auth_scores_insert` で `quiz_scores` への直接 INSERT も残っていた。
+ログイン中のユーザーなら、満点を大きく超える点数でランキング 1 位になれた。
+
+### 方針
+
+正解番号は公開ビューや `questions.json` から読めるので、「満点を取ったと嘘をつく」こと自体は防げない。
+防ぐのは**実際のゲームでは取り得ない点数**。
+
+| 検査 | 根拠 (src/config/quizConfig.ts) |
+|---|---|
+| `score` が `correct_count × 10` 以上 `correct_count × 15` 以下 | 1 問 = 基本 10 点 + 時間ボーナス 0〜5 点、不正解は 0 点 |
+| ランキング対象なら `total_count ≤ 10` | 1 セッション最大 `QUESTIONS_PER_SESSION` = 10 問。復習セッションはランキングに送らない |
+
+あわせて、記録の経路を `record_quiz_score` 1 本に絞る (`record_best_score` の実行権限と `quiz_scores` の直接 INSERT を外す)。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================================
+-- 0. 事前確認: 新しい規則では取り得ないベストスコア
+-- ==========================================================
+SELECT b.user_id, p.username, b.ranking_category, b.best_score, b.correct_count, b.total_count, b.achieved_at
+FROM quiz_best_scores b
+LEFT JOIN public_profiles p ON p.id = b.user_id
+WHERE b.total_count > 10
+   OR b.best_score > b.correct_count * 15
+   OR b.best_score < b.correct_count * 10
+ORDER BY b.best_score DESC;
+-- 行が返ったら不正記録の可能性が高い。確認のうえ消す:
+--   DELETE FROM quiz_best_scores WHERE user_id = '<id>' AND ranking_category = '<category>';
+
+-- ==========================================================
+-- 1. record_quiz_score に上限検査を追加 (§15 を置換)
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.record_quiz_score(
+  p_quiz_type        TEXT,
+  p_category         TEXT,
+  p_score            INTEGER,
+  p_correct_count    INTEGER,
+  p_total_count      INTEGER,
+  p_ranking_category TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  -- src/config/quizConfig.ts と揃えること
+  c_base_points      CONSTANT INT := 10;  -- BASE_POINTS_PER_CORRECT
+  c_max_bonus        CONSTANT INT := 5;   -- MAX_TIME_BONUS
+  c_session_max      CONSTANT INT := 10;  -- QUESTIONS_PER_SESSION
+  v_uid       TEXT;
+  v_score_id  TEXT;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  IF p_quiz_type NOT IN ('knowledge','photo') THEN
+    RAISE EXCEPTION 'invalid_quiz_type';
+  END IF;
+  IF p_category IS NOT NULL AND p_category NOT IN ('basic','regional','expert') THEN
+    RAISE EXCEPTION 'invalid_category';
+  END IF;
+  IF p_correct_count IS NULL OR p_correct_count < 0 THEN
+    RAISE EXCEPTION 'invalid_correct_count';
+  END IF;
+  IF p_total_count IS NULL OR p_total_count <= 0 OR p_total_count > 100 THEN
+    RAISE EXCEPTION 'invalid_total_count';
+  END IF;
+  IF p_correct_count > p_total_count THEN
+    RAISE EXCEPTION 'correct_count exceeds total_count';
+  END IF;
+  -- 1 問あたり 10〜15 点 (正解時) / 0 点 (不正解時) なので、点数は正解数で上下が決まる
+  IF p_score IS NULL
+     OR p_score < p_correct_count * c_base_points
+     OR p_score > p_correct_count * (c_base_points + c_max_bonus) THEN
+    RAISE EXCEPTION 'invalid_score';
+  END IF;
+  IF p_ranking_category IS NOT NULL THEN
+    IF p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+      RAISE EXCEPTION 'invalid_ranking_category';
+    END IF;
+    IF p_total_count > c_session_max THEN
+      RAISE EXCEPTION 'invalid_total_count';
+    END IF;
+  END IF;
+
+  v_score_id := gen_random_uuid()::text;
+  INSERT INTO quiz_scores (
+    id, user_id, quiz_type, category, score, correct_count, total_count, played_at
+  )
+  VALUES (
+    v_score_id, v_uid, p_quiz_type, p_category, p_score, p_correct_count, p_total_count, NOW()
+  );
+
+  IF p_ranking_category IS NOT NULL THEN
+    PERFORM public.record_best_score(
+      p_ranking_category, p_score, p_correct_count, p_total_count
+    );
+  END IF;
+
+  RETURN v_score_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) TO authenticated;
+
+-- ==========================================================
+-- 2. record_best_score は record_quiz_score の中からだけ呼ぶ
+--    (SECURITY DEFINER 関数の中では所有者権限で動くので、外しても内部呼び出しは通る)
+-- ==========================================================
+REVOKE ALL ON FUNCTION public.record_best_score(TEXT, INTEGER, INTEGER, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+
+-- ==========================================================
+-- 3. quiz_scores への直接 INSERT を閉じる (§11。フロントは §15 以降使っていない)
+-- ==========================================================
+DROP POLICY IF EXISTS "auth_scores_insert" ON quiz_scores;
+DROP POLICY IF EXISTS "anon_scores_insert" ON quiz_scores;
+```
+
+### 確認方法
+
+1. クイズを 1 回プレイ → 結果画面 → `/ranking` に自分のスコアが反映されること
+2. ブラウザのコンソールで:
+   ```javascript
+   await supabase.rpc('record_quiz_score', { p_quiz_type: 'knowledge', p_category: 'basic', p_score: 9999, p_correct_count: 10, p_total_count: 10, p_ranking_category: 'basic' })
+   // → invalid_score
+   await supabase.rpc('record_best_score', { p_ranking_category: 'basic', p_score: 150, p_correct_count: 10, p_total_count: 10 })
+   // → permission denied for function record_best_score
+   ```
+
+### 残る前提
+
+- 「全問正解・最速回答」の申告 (150 点) は防げない。正解がブラウザ側に配られる設計のため。
+  防ぐには、出題と採点をサーバで行う (問題 ID と回答だけ受け取る) 作りに変える必要がある
+- 連続記録は §10 の 3 秒制限のみ

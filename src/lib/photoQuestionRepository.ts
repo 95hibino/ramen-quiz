@@ -22,6 +22,12 @@ export type PhotoQuestionSubmission = Omit<
   showSubmitter: boolean;
 };
 
+/** 投稿結果。`pendingReview` は自動審査できず、運営の確認後に公開される状態。 */
+export interface PhotoQuestionSubmitResult {
+  question: PhotoQuestion;
+  pendingReview: boolean;
+}
+
 /**
  * 写真当てクイズの問題データソース抽象 IF。
  * Phase 1: ローカル JSON のモック実装。
@@ -34,11 +40,11 @@ export interface PhotoQuestionRepository {
   countByFilter(filter: PhotoQuestionFilter): Promise<number>;
   /**
    * ユーザー投稿問題を永続化する。
-   * 画像 Blob を Storage に PUT し、メタを DB に INSERT する。
+   * 画像 Blob を Storage に PUT し、サーバ側の画像審査を通して DB に登録する。
    * モック実装では未対応とし `submit` フィールドを持たないため、
    * 投稿可能か否かは呼び出し側で `'submit' in repo` で判定する。
    */
-  submit?(data: PhotoQuestionSubmission, image: Blob): Promise<PhotoQuestion>;
+  submit?(data: PhotoQuestionSubmission, image: Blob): Promise<PhotoQuestionSubmitResult>;
   /**
    * 特定の `submitterId` が投稿した問題の一覧を新しい順で返す (任意)。
    * マイページの「投稿履歴」表示に利用する。

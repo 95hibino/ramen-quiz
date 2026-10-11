@@ -14,6 +14,7 @@ import {
   canSubmit,
   type PhotoQuestionRepository,
   type PhotoQuestionSubmission,
+  type PhotoQuestionSubmitResult,
 } from './photoQuestionRepository';
 
 /** id 重複時はあとから来た方を捨てる (モックを優先しない)。 */
@@ -52,7 +53,7 @@ export const compositePhotoQuestionRepository: PhotoQuestionRepository = {
   async submit(
     data: PhotoQuestionSubmission,
     image: Blob,
-  ): Promise<PhotoQuestion> {
+  ): Promise<PhotoQuestionSubmitResult> {
     if (!isSupabaseConfigured() || !canSubmit(supabasePhotoQuestionRepository)) {
       throw new Error(
         'Supabase が未接続のため、現在は投稿を受け付けられません。社長の作業待ちです。',
