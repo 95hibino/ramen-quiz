@@ -158,7 +158,7 @@ export function PhotoQuiz(): JSX.Element {
         <h2 className="text-lg font-black text-ramen-soy">出題の仕組み</h2>
         <p className="text-sm leading-relaxed text-ramen-soy/80">
           スープの色や乳化の具合、麺の太さや縮れ方、丼や盛り付け、店構えといった見た目の手がかりから、
-          お店・系統・都道府県のいずれかを 4 択で当てるクイズです。豚骨のように白濁したスープと乳化した
+          お店・系統・都道府県のいずれかを 4 択で当てるクイズです。豚骨のように乳化して白濁したスープと、澄んだ
           清湯系スープの違い、極太麺と細麺の見分け方など、知識クイズの<strong>上級</strong>で扱う内容が
           そのまま役立ちます。写真は運営者が撮影したものに加え、利用者からの投稿写真も掲載しています。
         </p>
@@ -176,6 +176,58 @@ export function PhotoQuiz(): JSX.Element {
           が予習に役立ちます。
         </p>
       </div>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">写真から見分けるポイント</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          写真だけでお店や地域を当てるのは難しく感じますが、ラーメンの見た目には系統ごとの特徴がよく表れます。
+          次の 4 つに注目すると、選択肢をかなり絞り込めます。
+        </p>
+        <dl className="space-y-3 text-sm leading-relaxed text-ramen-soy/80">
+          <div>
+            <dt className="font-bold text-ramen-soy">1. スープの色と濁り</dt>
+            <dd>
+              白く濁ったスープは、豚骨や鶏ガラを強火で長く炊き、脂やゼラチンが乳化した「白湯（パイタン）」です。
+              底まで透けて見えるスープは、濁らせないように炊いた「清湯（チンタン）」。色の濃さは主にタレで決まり、
+              塩ラーメンは淡い色、醤油は茶色、富山ブラックのように真っ黒なものもあります。味噌ラーメンは不透明な茶色や黄土色になります。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">2. 表面に浮いている油</dt>
+            <dd>
+              スープの表面に白い粒が浮いていれば背脂で、新潟の燕背脂ラーメンや尾道ラーメン、京都の背脂醤油系などに見られます。
+              黒い油が回しかけてあれば、焦がしニンニク油（マー油）を使う熊本ラーメンの可能性が高くなります。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">3. 麺の太さと縮れ</dt>
+            <dd>
+              極細のストレート麺は博多・長浜系の豚骨ラーメンの代表的な特徴です。太い縮れ麺は喜多方ラーメンや
+              札幌の味噌ラーメン、極太の麺はつけ麺や二郎系、燕背脂ラーメンなどでよく使われます。
+              絞り込み条件の「麺の太さ」は、この違いを手がかりに問題を選ぶためのものです。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">4. トッピングと盛り付け</dt>
+            <dd>
+              ほうれん草・のり・チャーシューの 3 点がそろっていれば家系、山盛りのモヤシとキャベツなら二郎系、
+              甘辛く煮た豚バラ肉と生卵なら徳島ラーメン、ナルトの代わりに麩が載っていれば秋田の十文字中華そばが候補になります。
+              ご当地ラーメンの具は、地域の食文化と結びついていることが多いのです。
+            </dd>
+          </div>
+        </dl>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          もちろん例外も多く、同じ地域でも店ごとに個性があります。迷ったときは、正解後に表示される店舗情報と解説を読み、
+          <Link to="/regions" className="text-ramen-chili hover:underline">
+            都道府県別ご当地ラーメン
+          </Link>
+          で各地の特徴を確かめると、次の問題で見分けやすくなります。間違えた写真の問題は
+          <Link to="/learn" className="text-ramen-chili hover:underline">
+            学習モード
+          </Link>
+          に自動で保存されるので、写真だけをもう一度見直して特徴を覚えることもできます。
+        </p>
+      </section>
 
       <CheckboxGroup
         title="ラーメンの種類"

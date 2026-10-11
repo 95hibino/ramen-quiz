@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
-import { OPERATOR_CONTACT } from '@/content/legalMeta';
+import { OPERATOR_CONTACT, OPERATOR_NAME } from '@/content/legalMeta';
 import {
   ContactRateLimitError,
   isContactRepositoryReady,
@@ -244,6 +244,8 @@ export function Contact(): JSX.Element {
         </form>
       )}
 
+      <ContactGuide />
+
       {toast ? (
         <div
           role="status"
@@ -254,6 +256,104 @@ export function Contact(): JSX.Element {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * お問い合わせの前に読んでほしい案内 (種別ごとの書き方、問題の誤りや写真の通報の窓口)。
+ *
+ * フォームだけのページは中身が薄く、何を書けば早く解決するかも伝わらないため、
+ * 種別ごとに必要な情報を静的な文章で示す。種別名は CONTACT_CATEGORY_LABELS と揃える。
+ */
+function ContactGuide(): JSX.Element {
+  return (
+    <>
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">お問い合わせの前に</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          クイズの遊び方、スコアやランキングの仕組み、学習モードの使い方などは、
+          <Link to="/faq" className="text-ramen-chili hover:underline">
+            よくある質問
+          </Link>
+          、
+          <Link to="/ranking" className="text-ramen-chili hover:underline">
+            ランキング
+          </Link>
+          、
+          <Link to="/learn" className="text-ramen-chili hover:underline">
+            学習モード
+          </Link>
+          の各ページで説明しています。個人情報の取り扱いは
+          <Link to="/privacy" className="text-ramen-chili hover:underline">
+            プライバシーポリシー
+          </Link>
+          を、サイトの運営方針や問題の作り方は
+          <Link to="/about" className="text-ramen-chili hover:underline">
+            このサイトについて
+          </Link>
+          をご覧ください。
+        </p>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">お問い合わせ種別ごとに書いていただきたいこと</h2>
+        <dl className="space-y-3 text-sm leading-relaxed text-ramen-soy/80">
+          <div>
+            <dt className="font-bold text-ramen-soy">バグ報告</dt>
+            <dd>
+              どのページで、何をしたときに、どうなったかをお書きください。お使いの端末（スマートフォン／パソコン）と
+              ブラウザの種類が分かると、原因の調査が早くなります。画面に表示されたエラーメッセージがあれば、その文面もお知らせください。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">機能要望</dt>
+            <dd>
+              追加してほしい機能や出題してほしいテーマを、使いたい場面とあわせてお書きください。
+              すべてにお応えすることはできませんが、今後の改善の参考にさせていただきます。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">著作権・削除依頼</dt>
+            <dd>
+              対象のページの URL、または問題文の一部と、権利者ご本人またはその代理の方であることが分かる情報をお書きください。
+              内容を確認のうえ、必要に応じて掲載の停止や削除を行います。
+            </dd>
+          </div>
+          <div>
+            <dt className="font-bold text-ramen-soy">その他（問題や解説の誤りのご指摘など）</dt>
+            <dd>
+              知識クイズの問題や解説、読みもの、都道府県別ページの内容に誤りを見つけた場合は、該当する問題文や
+              ページの URL と、正しいと考えられる内容、可能であればその根拠となる資料をお知らせください。
+              お店の創業年や営業状況など、時間とともに変わる情報のご指摘も歓迎します。
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">写真当てクイズの写真についての通報</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          利用者が投稿した写真に、不適切な画像、著作権を侵害している画像、個人が特定できる写り込み、
+          誤った店舗情報などがあった場合は、ログインした状態で写真クイズの画面に表示される「この問題を通報」から
+          お知らせいただくのが確実です。ログインせずにお知らせいただく場合や、ご自身が投稿した写真の削除を希望される場合は、
+          このフォームの「著作権・削除依頼」から、写真の内容が分かる情報を添えてお送りください。いずれも運営者が内容を確認のうえ対応します。
+        </p>
+      </section>
+
+      <section className="card space-y-2">
+        <h2 className="text-lg font-black text-ramen-soy">運営者とご返信について</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          ラーメンクイズは {OPERATOR_NAME} が運営しています。いただいたお問い合わせはすべて運営者が目を通しますが、
+          内容によってはご返信までにお時間をいただく場合や、ご返信を差し上げられない場合があります。
+          ご入力いただいたメールアドレスなどの取り扱いは、プライバシーポリシーに記載のとおりです。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          お問い合わせ本文は 1 件あたり {CONTACT_BODY_MAX.toLocaleString()} 文字まで入力できます。同じメールアドレスからの送信は 1 時間に 1 件までに
+          制限しているため、書き足したいことがある場合は、少し時間をおいてから改めてお送りください。
+          いただいたご指摘をもとに問題や解説を修正した場合は、サイト上の該当箇所に反映します。
+        </p>
+      </section>
+    </>
   );
 }
 

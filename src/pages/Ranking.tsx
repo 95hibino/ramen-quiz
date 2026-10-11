@@ -6,6 +6,20 @@ import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
 import { buildSiteUrl } from '@/config/site';
 import {
+  BASE_POINTS_PER_CORRECT,
+  MAX_TIME_BONUS,
+  PHOTO_QUESTION_TIME_LIMIT_SEC,
+  QUESTION_TIME_LIMIT_SEC,
+  QUESTIONS_PER_SESSION,
+} from '@/config/quizConfig';
+import {
+  FAVORITE_SHOP_MAX,
+  PASSWORD_MIN,
+  USERNAME_MAX,
+  USERNAME_MIN,
+} from '@/lib/validation';
+import rawQuestions from '@/data/questions.json';
+import {
   RANKING_CATEGORIES,
   RANKING_CATEGORY_LABELS,
   type MyRankingEntry,
@@ -225,7 +239,121 @@ export function Ranking(): JSX.Element {
           </p>
         </div>
       ) : null}
+
+      <RankingGuide />
     </div>
+  );
+}
+
+/**
+ * ランキングの仕組み (スコア計算・集計ルール) の説明。
+ *
+ * ランキング表は実行時に Supabase から読むため、プリレンダ後の HTML には表の中身が入らない。
+ * 集計ルールを静的な文章で載せておくことで、表が空のときも利用者と検索エンジンに
+ * ページの中身が伝わるようにする。数値は quizConfig の定数から組み立て、実装とずれないようにする。
+ */
+function RankingGuide(): JSX.Element {
+  const countByCategory = (category: string): number =>
+    rawQuestions.filter((q) => q.category === category).length;
+  const maxPerQuestion = BASE_POINTS_PER_CORRECT + MAX_TIME_BONUS;
+  const maxScore = maxPerQuestion * QUESTIONS_PER_SESSION;
+  // 例: 知識クイズで残り 12 秒のときのボーナス (score.ts と同じ四捨五入)。
+  const exampleRemaining = 12;
+  const exampleBonus = Math.round((exampleRemaining / QUESTION_TIME_LIMIT_SEC) * MAX_TIME_BONUS);
+
+  return (
+    <>
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">スコアの計算方法</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          1 問正解するごとに基本点 {BASE_POINTS_PER_CORRECT} 点と、回答までの速さに応じた残り時間ボーナス（最大{' '}
+          {MAX_TIME_BONUS} 点）が入ります。ボーナスは「残り秒数 ÷ 制限時間 × {MAX_TIME_BONUS}」を四捨五入した値で、
+          不正解や時間切れの問題は 0 点です。制限時間は知識クイズが 1 問 {QUESTION_TIME_LIMIT_SEC} 秒、写真当てクイズが
+          1 問 {PHOTO_QUESTION_TIME_LIMIT_SEC} 秒です。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          たとえば知識クイズで残り {exampleRemaining} 秒の時点で正解すると、{BASE_POINTS_PER_CORRECT} 点 +
+          ボーナス {exampleBonus} 点で {BASE_POINTS_PER_CORRECT + exampleBonus} 点です。1 セッションは{' '}
+          {QUESTIONS_PER_SESSION} 問なので、全問を即答で正解したときの満点は {maxScore} 点になります。
+        </p>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">4 つのランキングと集計のルール</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          ランキングは「知識クイズ 初級」「知識クイズ 中級」「知識クイズ 上級」「写真当てクイズ」の 4 つに分かれていて、
+          それぞれ別々に集計されます。写真当てクイズは、ラーメンの種類や都道府県などの絞り込み条件に関係なく、
+          一つのランキングにまとめて集計します。
+        </p>
+        <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-ramen-soy/80">
+          <li>ランキングに記録されるのは、ログインした状態でプレイしたセッションのスコアです。</li>
+          <li>
+            学習モードの復習クイズは、同じ問題を繰り返し解けるため、ランキングには反映されません。
+          </li>
+          <li>各ユーザーのベストスコアだけで順位を決め、自己ベストを更新したときに順位が更新されます。</li>
+          <li>同点の場合は、そのスコアを先に達成したユーザーが上位になります。</li>
+          <li>
+            表には上位 100 位までを表示し、ユーザー名・都道府県・好きな店・ベストスコア・正解数・達成日が並びます。
+            100 位より下の場合は、表の下に自分の順位が表示されます。
+          </li>
+        </ul>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">ランキングへの参加方法</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          ランキングに参加するには、
+          <Link to="/signup" className="text-ramen-chili hover:underline">
+            アカウント作成
+          </Link>
+          ページでユーザー名（{USERNAME_MIN}〜{USERNAME_MAX} 文字）、パスワード（{PASSWORD_MIN} 文字以上）、
+          都道府県、好きなラーメン店（{FAVORITE_SHOP_MAX} 文字以内）を登録します。メールアドレスの登録は不要です。
+          登録したユーザー名・都道府県・好きなラーメン店は、ランキング表にそのまま表示されます。
+          本名や個人が特定できる情報は入力しないでください。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          知識クイズは初級 {countByCategory('basic')} 問、中級 {countByCategory('regional')} 問、上級{' '}
+          {countByCategory('expert')} 問の中から毎回ランダムに {QUESTIONS_PER_SESSION} 問が出題されます。
+          同じ難易度でもセッションごとに問題が変わるので、何度か挑戦して自己ベストを更新していくのが上位への近道です。
+        </p>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">上位を狙うコツ</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          1 問あたり、正解の基本点は {BASE_POINTS_PER_CORRECT} 点、速さのボーナスは最大でも {MAX_TIME_BONUS} 点です。
+          急いで 1 問落とすより、確実に正解するほうがスコアは伸びます。まずは
+          <Link to="/learn" className="text-ramen-chili hover:underline">
+            学習モード
+          </Link>
+          で間違えた問題をつぶし、正解できる問題を増やしてから速さを意識するのがおすすめです。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          中級ではご当地ラーメンや老舗の歴史が多く出題されるので、
+          <Link to="/regions" className="text-ramen-chili hover:underline">
+            都道府県別ご当地ラーメン
+          </Link>
+          が予習に役立ちます。上級は製麺やスープの科学、家系・二郎系の系譜など範囲が広いため、
+          <Link to="/glossary" className="text-ramen-chili hover:underline">
+            用語辞典
+          </Link>
+          と
+          <Link to="/articles" className="text-ramen-chili hover:underline">
+            読みもの
+          </Link>
+          で用語と背景を押さえておくと安定して得点できます。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          写真当てクイズは 1 問 {PHOTO_QUESTION_TIME_LIMIT_SEC} 秒と知識クイズより長めです。スープの色や濁り、表面の油、
+          麺の太さ、トッピングといった見た目の手がかりを順に確かめると、選択肢を絞り込みやすくなります。
+          見分け方のポイントは
+          <Link to="/quiz/photo" className="text-ramen-chili hover:underline">
+            写真当てクイズ
+          </Link>
+          のページにまとめています。
+        </p>
+      </section>
+    </>
   );
 }
 

@@ -8,8 +8,9 @@
  * ランキング機能とは独立し、端末単位で成長するタイプの機能。
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Seo } from '@/components/common/Seo';
+import { SampleQuestions } from '@/components/quiz/SampleQuestions';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
 import { WrongAnswersSection } from '@/components/learn/WrongAnswersSection';
@@ -140,7 +141,7 @@ export function Learn(): JSX.Element {
             </h2>
             <p className="mt-1 text-sm text-ramen-soy/70">
               写真当てクイズで間違えた問題からランダムに出題します (最大 {QUESTIONS_PER_SESSION} 問)。<br />
-              Supabase 経由で取得するため通信が必要 (オフライン時はモック問題のみ)。
+              写真はサーバーから読み込むため、インターネットに接続した状態でご利用ください。
             </p>
             <p className="mt-1 text-xs text-ramen-soy/60">
               対象: <span className="font-bold">{photoWrongCount} 問</span>
@@ -197,6 +198,67 @@ export function Learn(): JSX.Element {
       </div>
 
       {tab === 'wrong' ? <WrongAnswersSection /> : <FavoritesSection />}
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">学習モードの使い方</h2>
+        <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-ramen-soy/80">
+          <li>
+            <Link to="/quiz/knowledge" className="text-ramen-chili hover:underline">
+              知識クイズ
+            </Link>
+            または
+            <Link to="/quiz/photo" className="text-ramen-chili hover:underline">
+              写真当てクイズ
+            </Link>
+            を最後まで解きます。結果画面が表示された時点で、不正解だった問題が自動で「間違えた問題」に追加されます。
+          </li>
+          <li>
+            気になった問題や、解説をあとで読み返したい問題は、クイズ画面の ★ ボタンで「お気に入り」に保存できます。
+          </li>
+          <li>
+            このページの「復習クイズを開始」を押すと、間違えた問題だけで最大 {QUESTIONS_PER_SESSION} 問のクイズに挑戦できます。
+            復習で正解した問題は一覧から自動で外れるので、苦手な問題だけが残っていきます。
+          </li>
+          <li>
+            一覧から問題を開いて解説を読み、内容を覚えたら「✓ 覚えた」を押して一覧から外します。
+          </li>
+        </ol>
+        <p className="text-xs leading-relaxed text-ramen-soy/60">
+          間違えた問題とお気に入りは、お使いのブラウザ内に保存されます。ログインしていなくても使えますが、
+          別の端末やブラウザとは共有されず、ブラウザのデータを消去すると一覧も消えます。
+        </p>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-black text-ramen-soy">効率よく覚えるコツ</h2>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          ラーメンの知識は、ばらばらに暗記するよりも「なぜそうなるのか」とセットで覚えると定着しやすくなります。
+          たとえば、中華麺が黄色くコシがあるのは小麦粉にかん水を加えるから、富山ブラックの味が濃いのは
+          戦後の労働者がご飯のおかずにしたから、というように、解説に書かれた理由まで読むのがおすすめです。
+        </p>
+        <p className="text-sm leading-relaxed text-ramen-soy/80">
+          同じテーマで何問も間違える場合は、関連する
+          <Link to="/articles" className="text-ramen-chili hover:underline">
+            読みもの
+          </Link>
+          や
+          <Link to="/glossary" className="text-ramen-chili hover:underline">
+            用語辞典
+          </Link>
+          、
+          <Link to="/regions" className="text-ramen-chili hover:underline">
+            都道府県別ご当地ラーメン
+          </Link>
+          で背景をまとめて読むと、周辺の問題にも答えられるようになります。上級の製麺やスープの科学の問題は、
+          用語の意味を押さえるだけで正答率が大きく変わります。
+        </p>
+      </section>
+
+      <SampleQuestions
+        heading="復習問題の例"
+        lead="学習モードでは、こうした問題を解説付きで何度でも見直せます。"
+        ids={['basic-069', 'regional-061', 'expert-077']}
+      />
     </div>
   );
 }

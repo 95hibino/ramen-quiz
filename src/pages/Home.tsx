@@ -3,6 +3,7 @@ import { AdBanner } from '@/components/common/AdBanner';
 import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
+import { SampleQuestions } from '@/components/quiz/SampleQuestions';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl, SITE_NAME } from '@/config/site';
 import { ARTICLES } from '@/content/articles';
@@ -106,6 +107,12 @@ export function Home(): JSX.Element {
           で公開しています。
         </p>
       </section>
+
+      <SampleQuestions
+        heading="まずは 3 問、試してみよう"
+        lead="初級・中級・上級から 1 問ずつ選びました。答えを考えてから「正解と解説を見る」を開いてみてください。クイズ本編では、どの問題にもこのような解説が付いています。"
+        ids={['basic-063', 'regional-031', 'expert-021']}
+      />
 
       <section className="card">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

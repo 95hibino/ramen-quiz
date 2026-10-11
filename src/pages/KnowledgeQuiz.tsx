@@ -3,6 +3,7 @@ import { CATEGORY_META } from '@/config/quizConfig';
 import type { QuizCategory } from '@/types/quiz';
 import { useQuizStore } from '@/stores/quizStore';
 import { AdBanner } from '@/components/common/AdBanner';
+import { SampleQuestions } from '@/components/quiz/SampleQuestions';
 import { Seo } from '@/components/common/Seo';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl } from '@/config/site';
@@ -115,6 +116,12 @@ export function KnowledgeQuiz(): JSX.Element {
           </li>
         ))}
       </ul>
+
+      <SampleQuestions
+        heading="例題：こんな問題が出題されます"
+        lead="各難易度から 2 問ずつ、実際の出題と同じ問題を載せています。まずは自分で答えを考えてから「正解と解説を見る」を開いてみてください。本番のクイズでは、これらを含む全問題からランダムに 10 問が出題されます。"
+        ids={['basic-001', 'basic-023', 'regional-010', 'regional-067', 'expert-015', 'expert-083']}
+      />
 
       <div className="text-center">
         <Link to="/" className="text-sm text-ramen-soy/70 hover:underline">
