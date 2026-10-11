@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { PhotoQuestion } from '@/types/photoQuestion';
+import {
+  PHOTO_TYPE_OPTIONS,
+  type PhotoQuestion,
+  type PhotoType,
+} from '@/types/photoQuestion';
 import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { OptionButton } from './OptionButton';
 import { resolveOptionState } from './optionState';
@@ -51,7 +55,9 @@ export function PhotoQuizCard({
       <div className="overflow-hidden rounded-xl bg-ramen-broth/10">
         <img
           src={question.imageUrl}
-          alt={`クイズ写真: ${question.shopInfo.name}`}
+          // 店名・都道府県・系統はいずれも出題の答えになりうるため、代替テキストには
+          // 入れない (スクリーンリーダーや開発者ツールで正解が分かってしまう)。写真の種類だけを伝える。
+          alt={`クイズの出題写真（${photoTypeLabel(question.photoType)}）`}
           className="block h-auto w-full object-cover"
           loading="lazy"
         />
@@ -167,4 +173,9 @@ function ShopInfoRow({ label, value }: { label: string; value: string }): JSX.El
       <dd className="text-ramen-soy">{value}</dd>
     </div>
   );
+}
+
+/** 写真の種類を、絞り込み条件と同じ表示名に変換する (代替テキスト用)。 */
+function photoTypeLabel(photoType: PhotoType): string {
+  return PHOTO_TYPE_OPTIONS.find((o) => o.value === photoType)?.label ?? '写真';
 }
