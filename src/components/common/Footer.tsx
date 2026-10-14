@@ -47,6 +47,10 @@ export function Footer(): JSX.Element {
             読みもの
           </Link>
           <span aria-hidden="true" className="text-ramen-soy/30">|</span>
+          <Link to="/news" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
+            ニュース週報
+          </Link>
+          <span aria-hidden="true" className="text-ramen-soy/30">|</span>
           <Link to="/glossary" className="text-ramen-soy/80 hover:text-ramen-chili hover:underline">
             用語辞典
           </Link>

@@ -64,6 +64,10 @@ const Articles = lazy(() => import('@/pages/Articles').then((m) => ({ default: m
 const ArticleDetail = lazy(() =>
   import('@/pages/ArticleDetail').then((m) => ({ default: m.ArticleDetail })),
 );
+const NewsWeekly = lazy(() => import('@/pages/NewsWeekly').then((m) => ({ default: m.NewsWeekly })));
+const NewsWeeklyDetail = lazy(() =>
+  import('@/pages/NewsWeeklyDetail').then((m) => ({ default: m.NewsWeeklyDetail })),
+);
 
 function AppContent(): JSX.Element {
   const syncFromSession = useAuthStore((s) => s.syncFromSession);
@@ -106,6 +110,8 @@ function AppContent(): JSX.Element {
             <Route path="/regions/:prefectureSlug" element={<RegionDetail />} />
             <Route path="/articles" element={<Articles />} />
             <Route path="/articles/:slug" element={<ArticleDetail />} />
+            <Route path="/news" element={<NewsWeekly />} />
+            <Route path="/news/:slug" element={<NewsWeeklyDetail />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

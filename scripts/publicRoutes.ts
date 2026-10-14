@@ -18,6 +18,7 @@
  */
 import { ARTICLES } from '../src/content/articles';
 import { REGIONAL_RAMEN } from '../src/data/regionalRamen';
+import { NEWS_WEEKLY_REPORTS } from '../src/content/newsWeekly';
 
 /** 公開ページ 1 件の定義。`priority` / `changefreq` は sitemap 用。 */
 export interface PublicRoute {
@@ -78,5 +79,17 @@ export function buildPublicRoutes(): ReadonlyArray<PublicRoute> {
     priority: 0.7,
     changefreq: 'monthly' as const,
   }));
-  return [...STATIC_ROUTES, ...regionDetailRoutes, ...articleRoutes];
+  // ニュース週報。一覧ページは週報が 1 件以上あるときだけ載せる (空の一覧を公開しないため)。
+  const newsRoutes: ReadonlyArray<PublicRoute> =
+    NEWS_WEEKLY_REPORTS.length === 0
+      ? []
+      : [
+          { path: '/news', priority: 0.7, changefreq: 'weekly' as const },
+          ...NEWS_WEEKLY_REPORTS.map((r) => ({
+            path: `/news/${r.slug}`,
+            priority: 0.6,
+            changefreq: 'monthly' as const,
+          })),
+        ];
+  return [...STATIC_ROUTES, ...regionDetailRoutes, ...articleRoutes, ...newsRoutes];
 }

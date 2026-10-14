@@ -7,6 +7,7 @@ import { SampleQuestions } from '@/components/quiz/SampleQuestions';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl, SITE_NAME } from '@/config/site';
 import { ARTICLES } from '@/content/articles';
+import { NEWS_WEEKLY_REPORTS } from '@/content/newsWeekly';
 import { GLOSSARY_TERMS } from '@/content/glossary';
 import { OPERATOR_CONTACT, OPERATOR_NAME } from '@/content/legalMeta';
 import { REGIONAL_RAMEN } from '@/data/regionalRamen';
@@ -161,6 +162,13 @@ export function Home(): JSX.Element {
             title={`ラーメンの読みもの（${ARTICLES.length} 本）`}
             description="かん水と麺の科学、家系の系譜図、二郎のコール、つけ麺の歴史、地方別のご当地ラーメン図鑑。クイズの解説をテーマ別に編み直した記事。"
           />
+          {NEWS_WEEKLY_REPORTS.length > 0 ? (
+            <ReadingLink
+              to="/news"
+              title="ラーメンニュース週報"
+              description="YouTube で紹介したラーメンの話題を毎週金曜にまとめ、再生数ランキングと各話題の背景を解説。"
+            />
+          ) : null}
           <ReadingLink
             to="/regions"
             title={`都道府県別ご当地ラーメン（${REGIONAL_RAMEN.length} 都道府県）`}
