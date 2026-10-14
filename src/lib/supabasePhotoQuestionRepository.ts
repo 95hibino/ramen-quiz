@@ -303,7 +303,9 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
       .from(SUPABASE_STORAGE_BUCKET)
       .upload(imagePath, image, {
         contentType: 'image/webp',
-        cacheControl: '3600',
+        // パスは乱数で、同じパスの上書き (UPDATE) も RLS で禁止しているので中身は変わらない。
+        // 長くキャッシュさせて Supabase の転送量 (無料枠) を節約する (2026-10、旧 3600 秒)。
+        cacheControl: '31536000',
         upsert: false,
       });
     if (uploadResult.error) {

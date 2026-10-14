@@ -21,15 +21,14 @@ export const SITE_DEFAULT_DESCRIPTION =
 /**
  * デフォルト OGP 画像 (ルート相対パス)。
  *
- * `/api/og?mode=hero` は Vercel Edge Function (`api/og.tsx`) が返す動的 PNG。
- * 従来の `/og-default.svg` は SVG のため、一部の SNS クローラー (LINE 等) で正しく
- * レンダリングされない懸念があった。PNG に統一することで X / Facebook / LINE /
- * Discord など主要プラットフォームで安定表示される。
+ * 静的な PNG (1200x630)。SVG は一部の SNS クローラー (LINE 等) で表示されないため PNG にしている。
  *
- * 個別ページ (Result 等) はそれぞれ `<Seo ogImage="/api/og?score=..&type=.." />`
- * で上書きするため、この値はページ側で指定しなかった時のフォールバックとなる。
+ * 以前は Edge Function (`/api/og`) で動的に生成していたが、誰でも任意の文字を
+ * 描かせられ、クエリを変えるたびにキャッシュを外れて関数が実行される (無料枠の消費) ため、
+ * 2026-10 に静的ファイルへ置き換えた。画像は当時の `/api/og?mode=hero` の出力そのもの。
+ * 旧 URL は vercel.json のリダイレクトでこの画像に転送している。
  */
-export const DEFAULT_OG_IMAGE_PATH = '/api/og?mode=hero';
+export const DEFAULT_OG_IMAGE_PATH = '/og-default.png';
 
 /**
  * 本番ドメインを含むサイトの絶対 URL。

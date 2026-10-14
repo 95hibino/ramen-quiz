@@ -22,7 +22,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     //   NetworkFirst、静的アセットは StaleWhileRevalidate を使う
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['og-default.svg', 'pwa-icon.svg', 'pwa-icon-maskable.svg', 'robots.txt'],
+      includeAssets: ['og-default.svg', 'og-default.png', 'pwa-icon.svg', 'pwa-icon-maskable.svg', 'robots.txt'],
       manifest: {
         name: 'ラーメンクイズ',
         short_name: 'ラーメンクイズ',

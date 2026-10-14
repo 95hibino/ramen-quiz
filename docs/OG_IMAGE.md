@@ -1,5 +1,13 @@
 # 動的 OG 画像 (SNS シェアカード) ガイド
 
+> **2026-10: この仕組みは廃止した。** OG 画像は静的ファイル `public/og-default.png` (当時の `/api/og?mode=hero` の出力を保存したもの) に置き換え、
+> `api/og.tsx` と `@vercel/og` は削除した。旧 URL `/api/og` は vercel.json のリダイレクトでこの画像へ転送している。
+> 廃止の理由: 誰でもクエリで任意の文字 (ユーザー名欄 20 文字) を `ramen-quiz.com` の画像として描かせられ、
+> クエリを変えるたびにキャッシュを外れて関数が実行される (無料枠の消費) 一方、スコア入り画像は結果画面 (JS 描画・noIndex) の
+> メタタグにしか使われておらず、シェアされる URL はトップページなので SNS には一度も表示されていなかった。
+> 以下は経緯として残す。
+
+
 `api/og.tsx` が Vercel Edge Runtime 上で動作する Serverless Function として、
 SNS シェア時のカード画像 (og:image) を動的に生成する。
 

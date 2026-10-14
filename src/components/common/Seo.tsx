@@ -31,7 +31,7 @@ export interface SeoProps {
    * 省略時はクライアントの location.href を採用する。
    */
   url?: string;
-  /** OGP 画像の絶対 URL またはルート相対パス。省略時は `/og-default.svg`。 */
+  /** OGP 画像の絶対 URL またはルート相対パス。省略時は `DEFAULT_OG_IMAGE_PATH` (`/og-default.png`)。 */
   ogImage?: string;
   /**
    * OGP のページ種別。デフォルト `website`。
