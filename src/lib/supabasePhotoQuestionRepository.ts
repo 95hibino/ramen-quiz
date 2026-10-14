@@ -307,11 +307,12 @@ export const supabasePhotoQuestionRepository: PhotoQuestionRepository = {
         upsert: false,
       });
     if (uploadResult.error) {
-      // §24 で Storage の INSERT も authenticated 限定にした。
-      // セッション切れのときは RLS 違反として弾かれるので、登録側と同じ案内に揃える。
+      // Storage の INSERT は authenticated 限定 (§24) かつ回数制限付き (§30)。
+      // セッション切れと回数制限はどちらも同じ RLS 違反で返り区別できないので、両方を案内する。
       if (/row-level security|Unauthorized|violates/i.test(uploadResult.error.message)) {
         throw new Error(
-          '画像の権限を確認できませんでした。ログインし直してからもう一度お試しください。',
+          '画像をアップロードできませんでした。短時間に続けて投稿した場合は、しばらく待ってからお試しください。' +
+            'それでも失敗する場合は、ログインし直してください。',
         );
       }
       throw new Error(`画像アップロードに失敗しました: ${uploadResult.error.message}`);

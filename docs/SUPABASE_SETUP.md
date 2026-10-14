@@ -3338,3 +3338,191 @@ DROP POLICY IF EXISTS "anon_scores_insert" ON quiz_scores;
 - 「全問正解・最速回答」の申告 (150 点) は防げない。正解がブラウザ側に配られる設計のため。
   防ぐには、出題と採点をサーバで行う (問題 ID と回答だけ受け取る) 作りに変える必要がある
 - 連続記録は §10 の 3 秒制限のみ
+
+---
+
+## §29 お問い合わせの連投を止める (2026-10 脆弱性監査・軽微)
+
+### 塞ぐ穴
+
+§11 の `enforce_contact_rate_limit` は「同じメールアドレスから 1 時間に 1 件」を狙っていたが、次の 2 点で機能していなかった。
+
+| 穴 | 何が起きるか |
+|---|---|
+| メール欄が空なら制限を飛ばす (`IF NEW.email IS NULL THEN RETURN NEW`) | メールを書かずに送れば無制限に連投できる。メールアドレスを毎回変えても同じ |
+| トリガー関数が呼び出し元 (anon) の権限で動く | anon には `contact_submissions` の SELECT ポリシーが無いので、過去の送信が RLS で 0 件に見え、**同じメールでも制限が発動しない** |
+| 登録ポリシーが `TO anon` だけ | (不具合) ログイン中のユーザーが送ると RLS 違反で失敗する |
+
+### 方針
+
+- 関数を SECURITY DEFINER にして、RLS と無関係に全行を数える
+- 同じメールアドレスからは 1 時間に 1 件 (従来どおり)
+- サイト全体で 1 時間に 10 件・24 時間で 30 件を上限にする (メール欄が空でも、アドレスを変えても効く)
+- 登録ポリシーを anon と authenticated の両方に広げる (上限が効くようになったので広げても連投はできない)
+
+IP アドレスでの制限は、IP を保存することになりプライバシーポリシーの改定が要るため採らない。
+全体上限に達すると正規の問い合わせも一時的に送れなくなるが、画面には「あと N 分」が出る。現在の問い合わせ件数 (1 日数件以下) なら通常は届かない値にしてある。
+
+フロント (`supabaseContactRepository.ts` / `Contact.tsx`) は既に `rate_limit_exceeded:<秒数>` を「あと N 分」表示に変換しているので変更不要。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+CREATE OR REPLACE FUNCTION enforce_contact_rate_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  -- 調整するならここ
+  c_email_interval CONSTANT INTERVAL := INTERVAL '1 hour';
+  c_hourly_max     CONSTANT INT := 10;
+  c_daily_max      CONSTANT INT := 30;
+  v_last   TIMESTAMPTZ;
+  v_oldest TIMESTAMPTZ;
+  v_count  INT;
+BEGIN
+  -- 同時送信で上限をすり抜けないよう直列化する
+  PERFORM pg_advisory_xact_lock(hashtext('contact_rate_limit'));
+
+  IF NEW.email IS NOT NULL THEN
+    SELECT MAX(created_at) INTO v_last FROM contact_submissions WHERE email = NEW.email;
+    IF v_last IS NOT NULL AND v_last > NOW() - c_email_interval THEN
+      RAISE EXCEPTION 'rate_limit_exceeded:%',
+        GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_last + c_email_interval - NOW())))::INT)
+        USING HINT = 'Please wait before sending another contact';
+    END IF;
+  END IF;
+
+  SELECT COUNT(*), MIN(created_at) INTO v_count, v_oldest
+    FROM contact_submissions WHERE created_at > NOW() - INTERVAL '1 hour';
+  IF v_count >= c_hourly_max THEN
+    RAISE EXCEPTION 'rate_limit_exceeded:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_oldest + INTERVAL '1 hour' - NOW())))::INT)
+      USING HINT = 'Please wait before sending another contact';
+  END IF;
+
+  SELECT COUNT(*), MIN(created_at) INTO v_count, v_oldest
+    FROM contact_submissions WHERE created_at > NOW() - INTERVAL '24 hours';
+  IF v_count >= c_daily_max THEN
+    RAISE EXCEPTION 'rate_limit_exceeded:%',
+      GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_oldest + INTERVAL '24 hours' - NOW())))::INT)
+      USING HINT = 'Please wait before sending another contact';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- ログイン中のユーザー (authenticated) も送れるようにする。
+-- §11 のポリシーは TO anon だけで、ログイン中に送ると RLS 違反で失敗していた (§18 の通報と同じ問題)
+DROP POLICY IF EXISTS "anon_contact_insert" ON contact_submissions;
+DROP POLICY IF EXISTS "public_contact_insert" ON contact_submissions;
+CREATE POLICY "public_contact_insert" ON contact_submissions
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+-- トリガー自体は §11 のものをそのまま使う (関数の差し替えだけで効く)
+-- 念のため存在を確認:
+SELECT tgname FROM pg_trigger WHERE tgrelid = 'contact_submissions'::regclass AND NOT tgisinternal;
+```
+
+### 確認方法
+
+1. `/contact` からメールアドレスを入れて 1 件送信 → 成功
+2. 同じメールアドレスでもう 1 件 → 「あと 59 分」程度の案内
+3. ログインした状態で `/contact` から送信 → 成功 (以前は失敗していた)
+4. 1 時間以内の送信件数を数える (10 件以上なら全体上限が効いている状態):
+   ```sql
+   SELECT COUNT(*) FROM contact_submissions WHERE created_at > NOW() - INTERVAL '1 hour';
+   ```
+
+### ロールバック
+
+§11 の `enforce_contact_rate_limit` と `anon_contact_insert` ポリシーを流し直し、`public_contact_insert` を削除する。
+
+---
+
+## §30 写真のアップロード回数を制限する (2026-10 脆弱性監査・軽微)
+
+### 塞ぐ穴
+
+投稿の登録 (§26) は 5 分に 1 件だが、その前段の **Storage への画像アップロード**には回数制限が無かった。
+ログイン中のユーザーなら、問題に紐付かない画像を公開バケットに大量に置ける
+(1 枚 500KB まで。容量と帯域の消費、画像置き場としての悪用)。
+
+### 方針
+
+Storage の INSERT ポリシー (§26) に「直近のアップロード回数」の条件を足す。
+数えるのは自分の画像だけで、判定は SECURITY DEFINER 関数で行う (Storage の SELECT ポリシーに依存させない)。
+
+| 制限 | 値 | 正規の利用への影響 |
+|---|---|---|
+| 間隔 | 30 秒に 1 枚 | 投稿は 5 分に 1 件なので通常は当たらない |
+| 1 時間 | 10 枚 | 審査で弾かれて撮り直す場合を含めても十分 |
+| 24 時間 | 20 枚 | 同上 |
+
+回数は Storage に残っている自分の画像で数える。審査で弾かれた画像はブラウザが削除する (§26) ため数に入らないが、
+削除と再アップロードを繰り返しても 30 秒間隔の制限は効くうえ、画像は残らない。
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+CREATE OR REPLACE FUNCTION public.photo_upload_allowed()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM storage.objects
+      WHERE bucket_id = 'photo-quiz-user' AND owner = auth.uid()
+        AND created_at > NOW() - INTERVAL '30 seconds'
+    )
+    AND (
+      SELECT COUNT(*) FROM storage.objects
+      WHERE bucket_id = 'photo-quiz-user' AND owner = auth.uid()
+        AND created_at > NOW() - INTERVAL '1 hour'
+    ) < 10
+    AND (
+      SELECT COUNT(*) FROM storage.objects
+      WHERE bucket_id = 'photo-quiz-user' AND owner = auth.uid()
+        AND created_at > NOW() - INTERVAL '24 hours'
+    ) < 20;
+$$;
+
+REVOKE ALL ON FUNCTION public.photo_upload_allowed() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.photo_upload_allowed() TO authenticated;
+
+-- §26 の INSERT ポリシーに回数制限を足す
+DROP POLICY IF EXISTS "authenticated_storage_insert" ON storage.objects;
+CREATE POLICY "authenticated_storage_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'photo-quiz-user'
+    AND name ~ '^submissions/[0-9]{4}/[0-9]{2}/[0-9a-f]{32}\.webp$'
+    AND public.photo_upload_allowed()
+  );
+```
+
+制限に当たったアップロードは RLS 違反として返る。フロントは
+「短時間に続けて投稿した場合は、しばらく待ってから…」という案内を出す (`supabasePhotoQuestionRepository.ts`)。
+
+### 確認方法
+
+1. ログインして写真を 1 枚投稿 → 成功
+2. ブラウザのコンソールで、30 秒以内に 2 枚続けてアップロード → 2 枚目が `new row violates row-level security policy`
+
+### ロールバック
+
+```sql
+DROP POLICY IF EXISTS "authenticated_storage_insert" ON storage.objects;
+CREATE POLICY "authenticated_storage_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'photo-quiz-user'
+    AND name ~ '^submissions/[0-9]{4}/[0-9]{2}/[0-9a-f]{32}\.webp$'
+  );
+```
