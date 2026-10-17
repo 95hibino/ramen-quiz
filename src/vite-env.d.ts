@@ -15,6 +15,11 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   /** Supabase Storage バケット名 (デフォルト `photo-quiz-user`)。 */
   readonly VITE_SUPABASE_STORAGE_BUCKET?: string;
+  /**
+   * Cloudflare Turnstile のサイトキー (公開鍵)。会員登録・ログインのボット対策に使う。
+   * 未設定なら確認ボックスを出さない (docs/SUPABASE_SETUP.md §31)。
+   */
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
   /** Google AdSense パブリッシャー ID (例: `ca-pub-XXXXXXXXXXXXXXXX`)。未設定なら広告は全プレースホルダ表示。 */
   readonly VITE_ADSENSE_CLIENT_ID?: string;
   /** AdSense スロット ID: ホーム top の Leaderboard 枠 (728×90)。 */

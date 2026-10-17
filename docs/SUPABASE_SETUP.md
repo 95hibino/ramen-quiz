@@ -3526,3 +3526,70 @@ CREATE POLICY "authenticated_storage_insert" ON storage.objects
     AND name ~ '^submissions/[0-9]{4}/[0-9]{2}/[0-9a-f]{32}\.webp$'
   );
 ```
+
+---
+
+## §31 会員登録・ログインに CAPTCHA (Cloudflare Turnstile) を入れる (2026-10 脅威整理 #3)
+
+### 防ぎたいこと
+
+会員登録に人間確認が無いため、スクリプトでアカウントを大量に作れた。
+作ったアカウントで、ランキングに不適切なユーザー名・「好きな店」を並べたり、通報や投稿を水増ししたりできる。
+ログインも同じで、ユーザー名から fake email を計算できるため、パスワードの総当たりを自動化しやすい。
+
+### 方針
+
+- Supabase Auth の標準機能 (Bot and Abuse Protection) で Cloudflare Turnstile を有効にする。
+  会員登録・ログインの API がトークン無しでは通らなくなる
+- 画面 (`Signup.tsx` / `Login.tsx`) に確認ボックス (`components/account/TurnstileWidget.tsx`) を置き、
+  取得したトークンを `signUp` / `signInWithPassword` に渡す
+- Turnstile は無料・認証回数無制限。多くの利用者は操作なしで通過する
+- 会員登録はこれまで `signUp` の直後に `signInWithPassword` を呼んでいたが、トークンは 1 回しか使えないため、
+  `signUp` の戻り値のセッションを使うように変えた (`supabaseAuthRepository.ts`)
+- パスワード再設定 (§23 の復旧コード RPC) は Supabase Auth を通らないので対象外。こちらは 5 回失敗で 15 分ロックが効いている
+- プライバシーポリシーの「第三者提供・委託」に Cloudflare Turnstile を追記した
+
+### 作業順 (この順で行うこと)
+
+画面側を先に本番へ出し、そのあと Supabase 側を有効にする。逆にすると、確認ボックスの無い画面から
+会員登録・ログインが一切できなくなる。
+
+1. **Cloudflare でサイトキーを発行する**
+   1. https://dash.cloudflare.com/ でアカウントを作成 (無料。ドメインを Cloudflare に移す必要はない)
+   2. 左メニュー **Turnstile** → **Add widget**
+   3. Widget name: `ramen-quiz`、Hostname: `ramen-quiz.com` (www 付きで配信しているなら `www.ramen-quiz.com` も)
+      - Vercel のプレビュー URL (`*.vercel.app`) でも会員登録・ログインを試すなら、そのホスト名も足す
+   4. Widget mode: **Managed** (推奨。怪しいときだけチェックが出る)
+   5. 作成すると **Site Key** (公開鍵) と **Secret Key** (秘密鍵) が表示される
+2. **Vercel に Site Key を登録してデプロイする**
+   - Settings → Environment Variables に `VITE_TURNSTILE_SITE_KEY` = Site Key (Production / Preview)
+   - `VITE_` 付きの値はビルド時に埋め込まれるので、**登録後に必ず Redeploy** する
+   - この時点では Supabase 側が無効なので、トークンは送られるが検証されない (動作は今までどおり)
+3. **会員登録・ログイン画面に確認ボックスが出ることを確認する**
+4. **Supabase で CAPTCHA を有効にする**
+   - Dashboard → Authentication → (Settings 内の) **Bot and Abuse Protection**
+   - **Enable Captcha protection** を ON、Provider に **Turnstile by Cloudflare** を選び、Secret Key を貼って保存
+   - Secret Key は Supabase 以外 (Git・Vercel・フロント) には置かない
+
+### 確認方法
+
+1. 手順 4 のあと、ログアウトして `/login` から普通にログインできる
+2. `/signup` から新しいアカウントを作れる (復旧コードの画面まで進む)
+3. パスワードをわざと間違える → 「ユーザー名またはパスワードが違います」→ そのまま正しいパスワードで再送信できる
+   (確認ボックスが自動で取り直される)
+4. **トークン無しの API 呼び出しが拒否されること** — ブラウザのコンソールで:
+   ```javascript
+   await supabase.auth.signInWithPassword({ email: 'x@example.com', password: 'xxxxxxxx' })
+   // → captcha verification process failed
+   ```
+
+### ローカル開発
+
+`localhost` で試すときは、Cloudflare が公開しているテスト用キーを使う
+(サイトキー `1x00000000000000000000AA` は常に通過する。対応する秘密鍵は `1x0000000000000000000000000000000AA`)。
+本番の Supabase に向けたまま本番の CAPTCHA を有効にしていると、テスト用キーのトークンは拒否されるので注意。
+
+### ロールバック
+
+Supabase の Bot and Abuse Protection を OFF にする (画面側はそのままでよい。トークンが送られても無視される)。
+画面からも外す場合は Vercel の `VITE_TURNSTILE_SITE_KEY` を削除して Redeploy する。

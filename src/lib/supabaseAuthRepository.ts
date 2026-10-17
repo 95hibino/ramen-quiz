@@ -79,6 +79,13 @@ function toAuthError(err: unknown, fallbackMessage: string): AuthError {
   if (err instanceof SupabaseAuthError) {
     // Supabase の代表的なコード名は "invalid_credentials" / "user_already_exists" など。
     const c = err.code ?? '';
+    if (c.includes('captcha_failed') || /captcha/i.test(err.message)) {
+      // CAPTCHA (§31) のトークンが無い・期限切れ・使用済み。利用者がやり直せば通る
+      return new AuthError(
+        'unknown',
+        'ボット対策の確認ができませんでした。確認ボックスが完了してから、もう一度お試しください。',
+      );
+    }
     if (c.includes('user_already_exists') || c.includes('email_exists')) {
       code = 'username_taken';
     } else if (
@@ -301,6 +308,7 @@ export const supabaseAuthRepository: AuthRepository = {
     const { data: signUpData, error: signUpError } = await client.auth.signUp({
       email,
       password: input.password,
+      options: input.captchaToken ? { captchaToken: input.captchaToken } : undefined,
     });
     if (signUpError || !signUpData.user) {
       throw toAuthError(signUpError, 'アカウント作成に失敗しました。');
@@ -308,32 +316,42 @@ export const supabaseAuthRepository: AuthRepository = {
 
     // 【重要】 signUp 直後は Supabase JS の内部 PostgrestClient のトークンキャッシュに
     // 新セッションが伝播していないことがあり、続く RPC が RLS/認証コンテキストで
-    // 期待通りに動かない race condition が発生する。これを回避するため、必ず
-    // signInWithPassword を明示的に呼んでセッションを確定させる。Confirm email が ON の
-    // 場合はここで失敗する (未確認メールへのサインインは Supabase 側で拒否される)。
-    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-      email,
-      password: input.password,
-    });
-    if (signInError || !signInData.session || !signInData.user) {
-      throw new AuthError(
-        'unknown',
-        `アカウント作成後の自動サインインに失敗しました${signInError ? ` (${signInError.message})` : ''}。Supabase Dashboard で「Confirm email」を OFF にしてください (docs/SUPABASE_SETUP.md §11 参照)。`,
-      );
+    // 期待通りに動かない race condition が発生する。これを回避するため、セッションを
+    // 下の setSession で明示的に注入する。
+    //
+    // セッションは signUp の戻り値を使う (Confirm email が OFF なら必ず付いてくる)。
+    // 以前はここで signInWithPassword を呼び直していたが、CAPTCHA (§31) を有効にすると
+    // signInWithPassword にも新しいトークンが要る (トークンは 1 回しか使えない) ため、
+    // 戻り値にセッションが無いときだけの予備経路にした。
+    let session = signUpData.session;
+    let sessionUserId = signUpData.user.id;
+    if (!session) {
+      const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+        email,
+        password: input.password,
+      });
+      if (signInError || !signInData.session || !signInData.user) {
+        throw new AuthError(
+          'unknown',
+          `アカウント作成後の自動サインインに失敗しました${signInError ? ` (${signInError.message})` : ''}。Supabase Dashboard で「Confirm email」を OFF にしてください (docs/SUPABASE_SETUP.md §11 参照)。`,
+        );
+      }
+      session = signInData.session;
+      sessionUserId = signInData.user.id;
     }
 
-    // 【重要 2】 signInWithPassword が返した token を setSession で明示的に注入する。
+    // 【重要 2】 取得した token を setSession で明示的に注入する。
     // これで内部の PostgrestClient のトークンキャッシュも確実に上書きされ、
     // 続く RPC 呼び出しに正しい JWT が Authorization ヘッダで載る。
     await client.auth.setSession({
-      access_token: signInData.session.access_token,
-      refresh_token: signInData.session.refresh_token,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
     });
 
     // 【検証】 セッションが本当に期待通りのユーザーになっているか確認する。
     // getUser は API 呼び出しなので、JWT がサーバに届いていることも同時にテストできる。
     const { data: userCheck, error: userCheckError } = await client.auth.getUser();
-    if (userCheckError || !userCheck.user || userCheck.user.id !== signInData.user.id) {
+    if (userCheckError || !userCheck.user || userCheck.user.id !== sessionUserId) {
       throw new AuthError(
         'unknown',
         `セッション検証に失敗しました${userCheckError ? ` (${userCheckError.message})` : ''}。ページをリロードしてもう一度お試しください。`,
@@ -343,7 +361,7 @@ export const supabaseAuthRepository: AuthRepository = {
     // public_profiles に upsert (SECURITY DEFINER 関数経由。docs/SUPABASE_SETUP.md §13)。
     // id はサーバ側で auth.uid() から確定するので、client 側の id は使わない。
     const newProfile: User = {
-      id: signInData.user.id,
+      id: sessionUserId,
       username,
       prefecture: input.prefecture,
       favoriteShop,
@@ -372,6 +390,7 @@ export const supabaseAuthRepository: AuthRepository = {
     const { data, error } = await client.auth.signInWithPassword({
       email,
       password: input.password,
+      options: input.captchaToken ? { captchaToken: input.captchaToken } : undefined,
     });
     if (error || !data.user) {
       throw toAuthError(error, 'ログインに失敗しました。');

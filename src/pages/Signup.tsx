@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PREFECTURES, type Prefecture, isValidPrefecture } from '@/data/prefectures';
 import {
@@ -14,6 +14,11 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 import { Seo } from '@/components/common/Seo';
 import { RecoveryCodePanel } from '@/components/account/RecoveryCodePanel';
+import {
+  TURNSTILE_ENABLED,
+  TurnstileWidget,
+  type TurnstileHandle,
+} from '@/components/account/TurnstileWidget';
 import {
   compositeAuthRepository,
   isRecoveryCodeAvailable,
@@ -41,6 +46,9 @@ export function Signup(): JSX.Element {
   const [prefecture, setPrefecture] = useState<string>('');
   const [favoriteShop, setFavoriteShop] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+  // ボット対策 (Turnstile) のトークン。1 回しか使えないので送信のたびに取り直す
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   /**
    * 登録成功後に一度だけ表示する復旧コード。
@@ -71,6 +79,10 @@ export function Signup(): JSX.Element {
       setErrors({ prefecture: '都道府県の選択が不正です。' });
       return;
     }
+    if (TURNSTILE_ENABLED && !captchaToken) {
+      setErrors({ form: 'ボット対策の確認が終わるまでお待ちください。' });
+      return;
+    }
 
     try {
       await signup({
@@ -78,10 +90,13 @@ export function Signup(): JSX.Element {
         password,
         prefecture: prefecture as Prefecture,
         favoriteShop: favoriteShop.trim(),
+        captchaToken: captchaToken ?? undefined,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : '登録に失敗しました。';
       setErrors({ form: message });
+      // 入力を直して再送信できるよう、使用済みのトークンを取り直す
+      turnstileRef.current?.reset();
       return;
     }
 
@@ -102,6 +117,7 @@ export function Signup(): JSX.Element {
   };
 
   const isSubmitting = status === 'loading';
+  const waitingCaptcha = TURNSTILE_ENABLED && !captchaToken;
 
   // 登録完了後は入力フォームを畳み、復旧コードの提示だけを行う画面に切り替える。
   if (recoveryCode || recoveryError) {
@@ -230,8 +246,18 @@ export function Signup(): JSX.Element {
           </p>
         ) : null}
 
-        <button type="submit" className="btn-primary w-full" disabled={isSubmitting}>
-          {isSubmitting ? '登録中...' : 'アカウントを作成'}
+        <TurnstileWidget
+          ref={turnstileRef}
+          onToken={setCaptchaToken}
+          onError={(message) => setErrors({ form: message })}
+        />
+
+        <button
+          type="submit"
+          className="btn-primary w-full"
+          disabled={isSubmitting || waitingCaptcha}
+        >
+          {isSubmitting ? '登録中...' : waitingCaptcha ? '確認中...' : 'アカウントを作成'}
         </button>
       </form>
 

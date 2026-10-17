@@ -1,7 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { Seo } from '@/components/common/Seo';
+import {
+  TURNSTILE_ENABLED,
+  TurnstileWidget,
+  type TurnstileHandle,
+} from '@/components/account/TurnstileWidget';
 
 /** ログインページ。 */
 export function Login(): JSX.Element {
@@ -12,20 +17,30 @@ export function Login(): JSX.Element {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // ボット対策 (Turnstile) のトークン。1 回しか使えないので送信のたびに取り直す
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
+    if (TURNSTILE_ENABLED && !captchaToken) {
+      setErrorMessage('ボット対策の確認が終わるまでお待ちください。');
+      return;
+    }
     try {
-      await login({ username, password });
+      await login({ username, password, captchaToken: captchaToken ?? undefined });
       navigate('/', { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'ログインに失敗しました。';
       setErrorMessage(message);
+      // パスワードを打ち直して再送信できるよう、使用済みのトークンを取り直す
+      turnstileRef.current?.reset();
     }
   };
 
   const isSubmitting = status === 'loading';
+  const waitingCaptcha = TURNSTILE_ENABLED && !captchaToken;
 
   return (
     <div className="card mx-auto max-w-md space-y-5">
@@ -74,8 +89,14 @@ export function Login(): JSX.Element {
           </p>
         ) : null}
 
-        <button type="submit" className="btn-primary w-full" disabled={isSubmitting}>
-          {isSubmitting ? '認証中...' : 'ログイン'}
+        <TurnstileWidget ref={turnstileRef} onToken={setCaptchaToken} onError={setErrorMessage} />
+
+        <button
+          type="submit"
+          className="btn-primary w-full"
+          disabled={isSubmitting || waitingCaptcha}
+        >
+          {isSubmitting ? '認証中...' : waitingCaptcha ? '確認中...' : 'ログイン'}
         </button>
       </form>
 

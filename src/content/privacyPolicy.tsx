@@ -130,6 +130,21 @@ export function PrivacyPolicyContent(): JSX.Element {
             画像は判定完了後、Google 側の一時ログを除き保存されません。
           </li>
           <li>
+            <span className="font-bold">Cloudflare, Inc. — Turnstile（米国）:</span>{' '}
+            会員登録・ログイン時に、ボットによる不正なアカウント作成やログイン試行を防ぐために利用しています。
+            確認の際、ブラウザの種類や操作の情報などが Cloudflare に送信され、ボットかどうかの判定にのみ使用されます。
+            詳しくは Cloudflare の
+            <a
+              href="https://www.cloudflare.com/turnstile-privacy-policy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mx-1 font-bold text-ramen-chili hover:underline"
+            >
+              Turnstile プライバシーポリシー
+            </a>
+            をご覧ください。
+          </li>
+          <li>
             <span className="font-bold">Google AdSense:</span>{' '}
             広告配信のために利用しています。Google を含む第三者配信事業者は Cookie を使用して、
             ユーザーによる本サイトや他のサイトへのアクセス情報に基づき広告を配信します。

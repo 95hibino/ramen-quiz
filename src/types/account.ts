@@ -39,12 +39,16 @@ export interface SignupInput {
   password: string;
   prefecture: Prefecture;
   favoriteShop: string;
+  /** Cloudflare Turnstile のトークン (docs/SUPABASE_SETUP.md §31)。CAPTCHA 無効の環境では省略。 */
+  captchaToken?: string;
 }
 
 /** ログイン時に受け取る入力。 */
 export interface LoginInput {
   username: string;
   password: string;
+  /** Cloudflare Turnstile のトークン (docs/SUPABASE_SETUP.md §31)。CAPTCHA 無効の環境では省略。 */
+  captchaToken?: string;
 }
 
 /** 1 プレイ分のスコアレコード。 */
