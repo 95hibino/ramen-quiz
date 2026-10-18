@@ -19,6 +19,7 @@ import {
   USERNAME_MIN,
 } from '@/lib/validation';
 import rawQuestions from '@/data/questions.json';
+import { isDemoEntry } from '@/lib/demoRanking';
 import {
   RANKING_CATEGORIES,
   RANKING_CATEGORY_LABELS,
@@ -209,6 +210,10 @@ export function Ranking(): JSX.Element {
               </tbody>
             </table>
           </div>
+
+          {ranking.some(isDemoEntry) ? (
+            <p className="text-xs text-ramen-soy/60">参考記録を含みます</p>
+          ) : null}
 
           {/* ページング (総ページ数 > 1 のときだけ) */}
           {totalPages > 1 ? (

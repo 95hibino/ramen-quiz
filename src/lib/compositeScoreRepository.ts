@@ -9,6 +9,9 @@
  * - Supabase 未接続: 完全に localScoreRepository のみを使う (localStorage 完結、
  *   ランキングは端末内ユーザーのみ)
  *
+ * ランキング (`fetchRanking` / `fetchMyRanking`) は demoRanking.ts の規則で整えてから返す
+ * (testuser* の除外、本物のユーザーが 5 人未満のカテゴリはデモユーザーで補充)。
+ *
  * 自分のスコア履歴 (`listScoresByUser`):
  * - Supabase 接続中: サーバ (全端末合算) から取得。空なら local fallback。
  * - Supabase 未接続: local から。
@@ -23,6 +26,7 @@ import type {
   RankingEntry,
   ScoreRecord,
 } from '@/types/account';
+import { applyRankingPresentation, isExcludedFromRanking } from './demoRanking';
 import { upsertPublicProfile } from './supabasePublicProfileRepository';
 import { supabaseScoreRepository } from './supabaseScoreRepository';
 
@@ -70,16 +74,17 @@ export const compositeScoreRepository: ScoreRepository = {
     category: RankingCategory,
     limit: number,
   ): Promise<RankingEntry[]> {
-    if (!isSupabaseConfigured()) {
-      return localScoreRepository.fetchRanking(category, limit);
-    }
-    return supabaseScoreRepository.fetchRanking(category, limit);
+    const entries = isSupabaseConfigured()
+      ? await supabaseScoreRepository.fetchRanking(category, limit)
+      : await localScoreRepository.fetchRanking(category, limit);
+    return applyRankingPresentation(category, entries, limit);
   },
 
   async fetchMyRanking(category: RankingCategory): Promise<MyRankingEntry | null> {
-    if (!isSupabaseConfigured()) {
-      return localScoreRepository.fetchMyRanking(category);
-    }
-    return supabaseScoreRepository.fetchMyRanking(category);
+    const my = isSupabaseConfigured()
+      ? await supabaseScoreRepository.fetchMyRanking(category)
+      : await localScoreRepository.fetchMyRanking(category);
+    if (my && isExcludedFromRanking(my.user.username)) return null;
+    return my;
   },
 };
