@@ -14,7 +14,9 @@
  *   今は 3 分以下の動画しかないので画面は shortViews だけを出す。通常の長さの動画を
  *   出し始めたら、画面で出し分ける (社長方針 2026-10-18)
  * - API キー (公開データの読み取りのみ。OAuth ではない) は Vercel の環境変数 YOUTUBE_API_KEY
- * - CDN に 6 時間キャッシュさせ、YouTube API の呼び出しを 1 日数回に抑える
+ * - CDN に 6 時間キャッシュさせ、YouTube API の呼び出しを 1 日数回に抑える。
+ *   期限切れ後に古い値を返してよいのは 1 時間まで (訪問が途絶えた後でも、表示は最大 7 時間前の値。
+ *   社長方針 2026-10-19「毎日更新」を満たすため。以前は 24 時間で、最大 30 時間前の値が出えた)
  */
 export const config = {
   runtime: 'edge',
@@ -23,7 +25,7 @@ export const config = {
 const CHANNEL_ID = 'UCHRiRiUAUCbZ-ylsM3d2DCw';
 const SHORT_MAX_SEC = 180;
 const API_BASE = 'https://www.googleapis.com/youtube/v3';
-const CACHE_HEADER = 'public, max-age=600, s-maxage=21600, stale-while-revalidate=86400';
+const CACHE_HEADER = 'public, max-age=600, s-maxage=21600, stale-while-revalidate=3600';
 
 interface PlaylistItemsResponse {
   items?: { contentDetails?: { videoId?: string } }[];
