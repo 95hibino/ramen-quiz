@@ -19,12 +19,24 @@
  * ユーザーが広告であることを明確に認識できるようにする。
  */
 
+import { useEffect, useState } from 'react';
 import {
   AFFILIATE_ITEMS,
   PROVIDER_LABEL,
+  RAKUTEN_FETCHED_AT,
+  jstDayNumber,
+  pickRakutenItem,
   type AffiliateItem,
   type AffiliateSlot,
 } from '@/config/affiliate';
+
+/** 楽天の日替わり枠で、枠ごとに出す商品をずらす量 (ホームと結果画面で同じ商品が並ばないように)。 */
+const ROTATION_OFFSET: Record<AffiliateSlot, number> = {
+  'home-bottom': 0,
+  'result-bottom': 3,
+  'photo-shop-info': 5,
+  footer: 6,
+};
 
 interface AffiliateBannerProps {
   /** 配置場所の識別子。`AFFILIATE_ITEMS` から対応する案件を引く。 */
@@ -44,9 +56,20 @@ export function AffiliateBanner({
   fallback = 'hidden',
   className,
 }: AffiliateBannerProps): JSX.Element | null {
-  const items = AFFILIATE_ITEMS[slot] ?? [];
+  // 日替わりの基準日。プリレンダとハイドレーションの結果をそろえるため、初回は取得日で描画し、
+  // 表示後に今日の日付へ切り替える。
+  const [dayNumber, setDayNumber] = useState(() => jstDayNumber(new Date(`${RAKUTEN_FETCHED_AT}T12:00:00+09:00`)));
+  useEffect(() => {
+    setDayNumber(jstDayNumber(new Date()));
+  }, []);
+
+  const items = (AFFILIATE_ITEMS[slot] ?? []).map((item) =>
+    item.rakutenRotation ? (pickRakutenItem(dayNumber, ROTATION_OFFSET[slot]) ?? item) : item,
+  );
   // URL が設定済み（空文字でない）の案件だけを表示対象に。
   const visibleItems = items.filter((item) => item.url.trim().length > 0);
+  const usesRakutenApi = (AFFILIATE_ITEMS[slot] ?? []).some((item) => item.rakutenRotation)
+    && pickRakutenItem(0, 0) !== undefined;
 
   if (visibleItems.length === 0) {
     if (fallback === 'placeholder') {
@@ -85,6 +108,16 @@ export function AffiliateBanner({
           <AffiliateCard key={`${item.provider}-${idx}`} item={item} />
         ))}
       </div>
+      {usesRakutenApi ? (
+        // 楽天ウェブサービスの規約で必須のクレジット表示 (公式のテキスト版をそのまま使う)。
+        <p className="text-right text-[10px] text-ramen-soy/50">
+          {/* Rakuten Web Services Attribution Snippet FROM HERE */}
+          <a href="https://developers.rakuten.com/" target="_blank">
+            Supported by Rakuten Developers
+          </a>
+          {/* Rakuten Web Services Attribution Snippet TO HERE */}
+        </p>
+      ) : null}
     </aside>
   );
 }

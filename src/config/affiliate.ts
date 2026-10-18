@@ -17,6 +17,8 @@
  * 詳細は `docs/AFFILIATE_SETUP.md` を参照。
  */
 
+import rakutenItems from '../data/rakutenItems.json';
+
 /** アフィリエイトを配置するスロット（画面上の位置）の識別子。 */
 export type AffiliateSlot = 'result-bottom' | 'photo-shop-info' | 'footer' | 'home-bottom';
 
@@ -43,6 +45,54 @@ export interface AffiliateItem {
   imageUrl?: string;
   /** 任意。テキストオンリー時の補助説明。 */
   subText?: string;
+  /**
+   * 任意。true なら楽天の商品検索 API で取得した商品を日替わりで出す枠 (`pickRakutenItem`)。
+   * 取得データが空のときだけ、この案件自体 (一風堂) を代わりに出す。
+   */
+  rakutenRotation?: boolean;
+}
+
+/** 楽天の商品検索 API から週 1 回取得した商品 (`src/data/rakutenItems.json`)。 */
+interface RakutenApiItem {
+  itemCode: string;
+  name: string;
+  shopName: string;
+  price: number;
+  reviewAverage: number;
+  reviewCount: number;
+  url: string;
+  imageUrl: string;
+}
+
+const RAKUTEN_DATA = rakutenItems as { fetchedAt: string; items: RakutenApiItem[] };
+
+/** 取得日 (YYYY-MM-DD)。日替わりの初期表示 (プリレンダ) の基準にも使う。 */
+export const RAKUTEN_FETCHED_AT = RAKUTEN_DATA.fetchedAt;
+
+/**
+ * 日替わりで楽天の商品を 1 件選ぶ。取得データが無ければ undefined。
+ *
+ * - `dayNumber` は日本時間の通算日。`offset` を枠ごとに変え、ホームと結果画面で別の商品を出す。
+ * - 価格は取得日時点の値なので、日付を添えて表示する (古い価格を断定しないため)。
+ * - 商品検索 API の取得データは shorts_factory の `build_rakuten_items.py` が毎週金曜に入れ替える。
+ */
+export function pickRakutenItem(dayNumber: number, offset: number): AffiliateItem | undefined {
+  const items = RAKUTEN_DATA.items;
+  if (items.length === 0) return undefined;
+  const item = items[(((dayNumber + offset) % items.length) + items.length) % items.length];
+  const [, m, d] = RAKUTEN_DATA.fetchedAt.split('-').map(Number);
+  return {
+    provider: 'rakuten',
+    text: item.name,
+    url: item.url,
+    imageUrl: item.imageUrl,
+    subText: `${item.price.toLocaleString()}円（税込・送料無料、${m}/${d}時点）／ ${item.shopName}・レビュー ${item.reviewAverage.toFixed(2)}（${item.reviewCount.toLocaleString()}件）`,
+  };
+}
+
+/** 日本時間の通算日 (1970-01-01 = 0)。 */
+export function jstDayNumber(date: Date): number {
+  return Math.floor((date.getTime() + 9 * 60 * 60 * 1000) / 86_400_000);
 }
 
 /**
@@ -72,7 +122,8 @@ export const AFFILIATE_ITEMS: Record<AffiliateSlot, AffiliateItem[]> = {
       text: '博多一風堂 選べるラーメンセット【2年連続 楽天グルメ大賞】',
       url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING || RAKUTEN_IPPUDO_URL,
       imageUrl: RAKUTEN_IPPUDO_IMAGE,
-      subText: '1,000円（税込・送料無料）／ とんこつ 2〜8 食のお試しセット',
+      subText: 'とんこつ 2〜8 食のお試しセット',
+      rakutenRotation: true,
     },
     {
       provider: 'amazon',
@@ -102,7 +153,8 @@ export const AFFILIATE_ITEMS: Record<AffiliateSlot, AffiliateItem[]> = {
       text: '博多一風堂 選べるラーメンセット【2年連続 楽天グルメ大賞】',
       url: import.meta.env.VITE_AFF_RAKUTEN_RAMEN_RANKING || RAKUTEN_IPPUDO_URL,
       imageUrl: RAKUTEN_IPPUDO_IMAGE,
-      subText: '1,000円（税込・送料無料）／ 楽天市場で全国の名店ラーメン',
+      subText: '楽天市場で全国の名店ラーメン',
+      rakutenRotation: true,
     },
   ],
 };
