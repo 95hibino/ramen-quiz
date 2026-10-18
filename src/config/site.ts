@@ -14,6 +14,9 @@ export const SITE_NAME = 'ラーメンクイズ';
 /** 公式 X (旧 Twitter) アカウントの URL。Footer / About から相互送客するために使用。 */
 export const X_ACCOUNT_URL = 'https://x.com/ramen_quiz_jp';
 
+/** 公式 YouTube チャンネルの URL。トップページの再生数表示から送客するために使用。 */
+export const YOUTUBE_CHANNEL_URL = 'https://www.youtube.com/@ramen-quiz';
+
 /** デフォルト OGP 説明文 (ページ未指定時用)。 */
 export const SITE_DEFAULT_DESCRIPTION =
   'ラーメンの歴史・地域・文化・製麺まで、奥深いラーメン知識を 4 択クイズで楽しく学ぼう。';

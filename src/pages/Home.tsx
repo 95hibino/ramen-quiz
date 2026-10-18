@@ -3,6 +3,7 @@ import { AdBanner } from '@/components/common/AdBanner';
 import { AffiliateBanner } from '@/components/common/AffiliateBanner';
 import { Seo } from '@/components/common/Seo';
 import { ShareButtons } from '@/components/common/ShareButtons';
+import { SiteStats } from '@/components/home/SiteStats';
 import { SampleQuestions } from '@/components/quiz/SampleQuestions';
 import { StructuredData } from '@/components/common/StructuredData';
 import { buildSiteUrl, SITE_NAME } from '@/config/site';
@@ -89,6 +90,8 @@ export function Home(): JSX.Element {
           </Link>
         </div>
       </section>
+
+      <SiteStats />
 
       <section className="card space-y-3">
         <h2 className="text-xl font-black text-ramen-soy">ラーメンクイズとは</h2>
