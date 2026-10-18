@@ -3,6 +3,7 @@
  *
  * 1. テスト用アカウント (`testuser` で始まる名前) はどのランキングにも出さない。
  * 2. 本物のユーザーが 5 人に満たないカテゴリは、デモユーザーで 5 位まで埋める。
+ *    ランキングは週間 (月曜 0 時リセット) なので、デモの達成日も今週の中に置く。
  *    - デモユーザーは満点 (10 問全問正解) にしない。正解は最大 9 問
  *    - 顔ぶれと点数は毎週月曜 0 時 (日本時間) に入れ替わる。週番号を種にした
  *      擬似乱数で決めるので、同じ週なら誰が見ても同じ表になる (DB・定期実行は不要)
@@ -106,6 +107,11 @@ function weekStartMs(weekIndex: number): number {
   return weekIndex * WEEK_MS + MONDAY_OFFSET_MS - JST_OFFSET_MS;
 }
 
+/** 今週 (日本時間の月曜 0 時) の始まりの時刻。週間ランキングの集計期間の起点。 */
+export function jstWeekStartMs(nowMs: number): number {
+  return weekStartMs(jstWeekIndex(nowMs));
+}
+
 function hashString(value: string): number {
   let h = 2166136261;
   for (let i = 0; i < value.length; i++) {
@@ -153,13 +159,16 @@ export function buildDemoEntries(
   }
 
   const [minCorrect, maxCorrect] = CORRECT_RANGE[category];
-  // 達成日時は「先週の月曜〜日曜」に散らす (今週の頭でも未来日付にならないように)
-  const rangeStart = weekStartMs(week) - WEEK_MS;
-  return pool.slice(0, DEMO_FILL_COUNT).map((persona) => {
+  // 達成日時は今週の中に散らす。まだ来ていない時刻に当たった人は「少し前」に寄せ、
+  // その時刻を過ぎたら本来の日時で固定する (未来の日付を出さず、過ぎた日付は動かさない)
+  const weekStart = weekStartMs(week);
+  return pool.slice(0, DEMO_FILL_COUNT).map((persona, idx) => {
     const correctCount = randomInt(random, minCorrect, maxCorrect);
     // 時間ボーナスは 1 問 1〜4 点 (最速の 5 点満額は付けない)
     const bonus = randomInt(random, correctCount, correctCount * 4);
-    const achievedAt = new Date(rangeStart + Math.floor(random() * WEEK_MS)).toISOString();
+    const planned = weekStart + Math.floor(random() * WEEK_MS);
+    const latest = Math.max(weekStart, nowMs - (idx + 1) * 17 * 60 * 1000);
+    const achievedAt = new Date(Math.min(planned, latest)).toISOString();
     return {
       user: {
         id: `${DEMO_ID_PREFIX}${category}:${persona.username}`,

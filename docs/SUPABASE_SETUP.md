@@ -3593,3 +3593,261 @@ CREATE POLICY "authenticated_storage_insert" ON storage.objects
 
 Supabase の Bot and Abuse Protection を OFF にする (画面側はそのままでよい。トークンが送られても無視される)。
 画面からも外す場合は Vercel の `VITE_TURNSTILE_SITE_KEY` を削除して Redeploy する。
+
+---
+
+## §32 週間ランキング (2026-10 集客施策)
+
+### やること
+
+ランキングを「全期間のベストスコア」から「**今週 (日本時間の月曜 0 時〜日曜) のベストスコア**」に変える。
+毎週月曜 0 時に表が空になり、また上位を狙える。本物のユーザーが 5 人未満のカテゴリはデモ記録で埋める
+(フロントの `src/lib/demoRanking.ts`。DB には入れない)。
+
+### 方針
+
+- 週ごとのベストを `quiz_weekly_best_scores` (user_id, ranking_category, week_start) に持つ
+- 書き込みは §28 の `record_quiz_score` の中だけ (直接の INSERT / UPDATE は許可しない)。
+  全期間の `quiz_best_scores` も従来どおり更新する
+- 週の区切りは `date_trunc('week', now() AT TIME ZONE 'Asia/Tokyo')` = 日本時間の月曜 0 時。
+  フロントのデモ記録の入れ替わり (`jstWeekStartMs`) と同じ
+- 画面は `quiz_weekly_ranking_by_category` ビュー (列は §14 の `quiz_ranking_by_category` と同じ) と
+  `get_my_weekly_ranking` RPC を読む
+
+### 作業順
+
+1. 下の SQL を SQL Editor で 1 度だけ実行
+2. その後に push (先に push すると、SQL 実行までは本物の記録が出ず、デモ記録だけになる)
+
+### 実行 SQL (SQL Editor で 1 度だけ実行)
+
+```sql
+-- ==========================================================
+-- 1. 週ごとのベストスコア
+-- ==========================================================
+CREATE TABLE IF NOT EXISTS quiz_weekly_best_scores (
+  user_id          TEXT NOT NULL REFERENCES public_profiles(id) ON DELETE CASCADE,
+  ranking_category TEXT NOT NULL CHECK (ranking_category IN ('basic','regional','expert','photo')),
+  week_start       DATE NOT NULL,
+  best_score       INTEGER NOT NULL CHECK (best_score >= 0 AND best_score <= 10000),
+  correct_count    INTEGER NOT NULL CHECK (correct_count >= 0),
+  total_count      INTEGER NOT NULL CHECK (total_count > 0 AND total_count <= 100),
+  achieved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, ranking_category, week_start),
+  CONSTRAINT correct_le_total_weekly CHECK (correct_count <= total_count)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_weekly_best_scores_rank
+  ON quiz_weekly_best_scores (week_start, ranking_category, best_score DESC, achieved_at ASC);
+
+ALTER TABLE quiz_weekly_best_scores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_weekly_best_scores_select" ON quiz_weekly_best_scores;
+CREATE POLICY "public_weekly_best_scores_select" ON quiz_weekly_best_scores
+  FOR SELECT TO public USING (true);
+-- INSERT / UPDATE のポリシーは作らない (record_quiz_score の中からだけ書く)
+
+-- ==========================================================
+-- 2. record_quiz_score に週間ベストの更新を追加 (§28 を置換。検査は §28 と同じ)
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.record_quiz_score(
+  p_quiz_type        TEXT,
+  p_category         TEXT,
+  p_score            INTEGER,
+  p_correct_count    INTEGER,
+  p_total_count      INTEGER,
+  p_ranking_category TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  -- src/config/quizConfig.ts と揃えること
+  c_base_points      CONSTANT INT := 10;  -- BASE_POINTS_PER_CORRECT
+  c_max_bonus        CONSTANT INT := 5;   -- MAX_TIME_BONUS
+  c_session_max      CONSTANT INT := 10;  -- QUESTIONS_PER_SESSION
+  v_uid       TEXT;
+  v_score_id  TEXT;
+  v_week      DATE;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+
+  IF p_quiz_type NOT IN ('knowledge','photo') THEN
+    RAISE EXCEPTION 'invalid_quiz_type';
+  END IF;
+  IF p_category IS NOT NULL AND p_category NOT IN ('basic','regional','expert') THEN
+    RAISE EXCEPTION 'invalid_category';
+  END IF;
+  IF p_correct_count IS NULL OR p_correct_count < 0 THEN
+    RAISE EXCEPTION 'invalid_correct_count';
+  END IF;
+  IF p_total_count IS NULL OR p_total_count <= 0 OR p_total_count > 100 THEN
+    RAISE EXCEPTION 'invalid_total_count';
+  END IF;
+  IF p_correct_count > p_total_count THEN
+    RAISE EXCEPTION 'correct_count exceeds total_count';
+  END IF;
+  -- 1 問あたり 10〜15 点 (正解時) / 0 点 (不正解時) なので、点数は正解数で上下が決まる
+  IF p_score IS NULL
+     OR p_score < p_correct_count * c_base_points
+     OR p_score > p_correct_count * (c_base_points + c_max_bonus) THEN
+    RAISE EXCEPTION 'invalid_score';
+  END IF;
+  IF p_ranking_category IS NOT NULL THEN
+    IF p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+      RAISE EXCEPTION 'invalid_ranking_category';
+    END IF;
+    IF p_total_count > c_session_max THEN
+      RAISE EXCEPTION 'invalid_total_count';
+    END IF;
+  END IF;
+
+  v_score_id := gen_random_uuid()::text;
+  INSERT INTO quiz_scores (
+    id, user_id, quiz_type, category, score, correct_count, total_count, played_at
+  )
+  VALUES (
+    v_score_id, v_uid, p_quiz_type, p_category, p_score, p_correct_count, p_total_count, NOW()
+  );
+
+  IF p_ranking_category IS NOT NULL THEN
+    PERFORM public.record_best_score(
+      p_ranking_category, p_score, p_correct_count, p_total_count
+    );
+
+    -- §32: 今週のベスト (新記録のときだけ更新。同点は先に出した記録を残す)
+    v_week := date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date;
+    INSERT INTO quiz_weekly_best_scores (
+      user_id, ranking_category, week_start, best_score, correct_count, total_count, achieved_at
+    )
+    VALUES (
+      v_uid, p_ranking_category, v_week, p_score, p_correct_count, p_total_count, NOW()
+    )
+    ON CONFLICT (user_id, ranking_category, week_start) DO UPDATE
+      SET best_score    = EXCLUDED.best_score,
+          correct_count = EXCLUDED.correct_count,
+          total_count   = EXCLUDED.total_count,
+          achieved_at   = EXCLUDED.achieved_at
+      WHERE quiz_weekly_best_scores.best_score < EXCLUDED.best_score;
+  END IF;
+
+  RETURN v_score_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.record_quiz_score(TEXT, TEXT, INTEGER, INTEGER, INTEGER, TEXT) TO authenticated;
+
+-- ==========================================================
+-- 3. 今週のランキング (列は quiz_ranking_by_category と同じ)
+-- ==========================================================
+CREATE OR REPLACE VIEW quiz_weekly_ranking_by_category AS
+SELECT
+  p.id            AS user_id,
+  p.username,
+  p.prefecture,
+  p.favorite_shop,
+  w.ranking_category,
+  w.best_score,
+  w.correct_count,
+  w.total_count,
+  w.achieved_at
+FROM quiz_weekly_best_scores w
+INNER JOIN public_profiles p ON p.id = w.user_id
+WHERE w.week_start = date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date;
+
+-- ==========================================================
+-- 4. 今週の自分の順位 (§16 get_my_ranking の週間版)
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.get_my_weekly_ranking(
+  p_ranking_category TEXT
+) RETURNS TABLE (
+  my_rank       INTEGER,
+  username      TEXT,
+  prefecture    TEXT,
+  favorite_shop TEXT,
+  best_score    INTEGER,
+  correct_count INTEGER,
+  total_count   INTEGER,
+  achieved_at   TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid  TEXT;
+  v_week DATE;
+BEGIN
+  v_uid := auth.uid()::text;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING HINT = 'JWT が付与されていません';
+  END IF;
+  IF p_ranking_category NOT IN ('basic','regional','expert','photo') THEN
+    RAISE EXCEPTION 'invalid_ranking_category';
+  END IF;
+  v_week := date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date;
+
+  RETURN QUERY
+  SELECT
+    (
+      SELECT COUNT(*)::INTEGER + 1
+      FROM quiz_weekly_best_scores AS other
+      WHERE other.ranking_category = p_ranking_category
+        AND other.week_start = v_week
+        AND (
+          other.best_score > my.best_score
+          OR (other.best_score = my.best_score AND other.achieved_at < my.achieved_at)
+        )
+    ) AS my_rank,
+    p.username,
+    p.prefecture,
+    p.favorite_shop,
+    my.best_score,
+    my.correct_count,
+    my.total_count,
+    my.achieved_at
+  FROM quiz_weekly_best_scores AS my
+  INNER JOIN public_profiles p ON p.id = my.user_id
+  WHERE my.user_id = v_uid
+    AND my.ranking_category = p_ranking_category
+    AND my.week_start = v_week;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_my_weekly_ranking(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_weekly_ranking(TEXT) TO authenticated;
+
+-- ==========================================================
+-- 5. 今週すでに出ていた記録を移す (全期間ベストを今週出した人だけ。週の途中で入れる場合用)
+-- ==========================================================
+INSERT INTO quiz_weekly_best_scores (
+  user_id, ranking_category, week_start, best_score, correct_count, total_count, achieved_at
+)
+SELECT user_id, ranking_category,
+       date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date,
+       best_score, correct_count, total_count, achieved_at
+FROM quiz_best_scores
+WHERE achieved_at >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo')
+ON CONFLICT DO NOTHING;
+```
+
+### 確認方法
+
+1. `SELECT date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date;` → 今週の月曜の日付が返る
+2. ログインしてクイズを 1 回プレイ → `/ranking` (週間ランキング) に自分が出る
+3. `SELECT * FROM quiz_weekly_best_scores ORDER BY achieved_at DESC LIMIT 5;` に今の記録が入っている
+4. §28 の確認 2 (`p_score: 9999` → `invalid_score`) が引き続き通る
+
+### 残ること
+
+- 過去の週の行は消さずに残る (1 人 1 カテゴリ 1 週 1 行で小さい)。将来「先週の 1 位」等を出すときに使える
+- 全期間のランキングは画面から外したが、`quiz_ranking_by_category` / `get_my_ranking` は残している
+
+### ロールバック
+
+画面を全期間に戻す場合はフロントを戻す (`supabaseScoreRepository` の参照先を §14 / §16 に)。
+DB は §28 の `record_quiz_score` を再実行すれば週間表への書き込みが止まる (表は残してよい)。

@@ -6,6 +6,7 @@ import type {
   User,
 } from '@/types/account';
 import { generateId, readJson, STORAGE_KEYS, writeJson } from '@/lib/storage';
+import { jstWeekStartMs } from '@/lib/demoRanking';
 import { localAuthRepository } from '@/lib/localAuthRepository';
 import type { RecordScoreInput, ScoreRepository } from '@/lib/scoreRepository';
 
@@ -33,7 +34,7 @@ function inferRankingCategoryFromRecord(record: ScoreRecord): RankingCategory | 
 
 /**
  * localStorage 上にスコアを永続化する実装。
- * §14 移行に合わせて fetchRanking はカテゴリ別ベストスコアで並べる。
+ * §14 移行に合わせて fetchRanking はカテゴリ別ベストスコアで並べる (§32 で今週のプレイだけに絞る)。
  */
 export const localScoreRepository: ScoreRepository = {
   async recordScore(input: RecordScoreInput): Promise<ScoreRecord> {
@@ -64,7 +65,8 @@ export const localScoreRepository: ScoreRepository = {
   ): Promise<RankingEntry[]> {
     // localStorage の scores から、指定カテゴリのユーザーごとのベストを集計。
     // Supabase 未接続の開発環境向けなので、UI 動作確認できる程度で十分。
-    const scores = loadScores();
+    const weekStart = new Date(jstWeekStartMs(Date.now())).toISOString();
+    const scores = loadScores().filter((s) => s.playedAt >= weekStart);
     const users = await localAuthRepository.listUsers();
     const userMap = new Map<string, User>(users.map((u) => [u.id, u]));
 

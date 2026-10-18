@@ -19,7 +19,7 @@ import {
   USERNAME_MIN,
 } from '@/lib/validation';
 import rawQuestions from '@/data/questions.json';
-import { isDemoEntry } from '@/lib/demoRanking';
+import { isDemoEntry, jstWeekStartMs } from '@/lib/demoRanking';
 import {
   RANKING_CATEGORIES,
   RANKING_CATEGORY_LABELS,
@@ -32,7 +32,7 @@ const RANKING_LIMIT = 100;
 const PAGE_SIZE = 20;
 
 /**
- * ランキングページ (§14/§16 ベストスコア方式)。
+ * 週間ランキングページ (§32。今週 = 日本時間の月曜 0 時〜日曜のベストスコア)。
  *
  * - 4 種類のランキングカテゴリをドロップダウンで切替
  * - 上位 100 位を 20 件ずつページング
@@ -50,6 +50,12 @@ export function Ranking(): JSX.Element {
 
   // カテゴリ切替時に page も 1 にリセット。
   const [page, setPage] = useState(1);
+
+  // 集計期間はプリレンダ時 (ビルドした週) ではなく、表示した時点の週で出す。
+  const [weekPeriod, setWeekPeriod] = useState<string | null>(null);
+  useEffect(() => {
+    setWeekPeriod(formatWeekPeriod(Date.now()));
+  }, []);
 
   useEffect(() => {
     void loadRanking(rankingCategory, RANKING_LIMIT);
@@ -88,24 +94,30 @@ export function Ranking(): JSX.Element {
     !!currentUser && !isMeInTop100 && myRanking !== null;
 
   const shareUrl = buildSiteUrl('/ranking');
-  const shareText = `🍜 ラーメンクイズ「${RANKING_CATEGORY_LABELS[rankingCategory]}」ランキングをチェック！\n上位を狙ってラーメン知識で挑戦しよう！`;
+  const shareText = `🍜 ラーメンクイズ「${RANKING_CATEGORY_LABELS[rankingCategory]}」週間ランキングをチェック！\n上位を狙ってラーメン知識で挑戦しよう！`;
 
   return (
     <div className="space-y-6">
       <Seo
-        title={`ランキング (${RANKING_CATEGORY_LABELS[rankingCategory]})`}
-        description={`ラーメンクイズ ${RANKING_CATEGORY_LABELS[rankingCategory]} のランキング。全プレイヤーのベストスコアと順位を表示。あなたの順位は？`}
+        title={`週間ランキング (${RANKING_CATEGORY_LABELS[rankingCategory]})`}
+        description={`ラーメンクイズ ${RANKING_CATEGORY_LABELS[rankingCategory]} の週間ランキング。今週のベストスコアと順位を表示し、毎週月曜にリセット。あなたの順位は？`}
         url="/ranking"
         keywords={[
           'ラーメンクイズ',
           'ランキング',
+          '週間ランキング',
           RANKING_CATEGORY_LABELS[rankingCategory],
           'クイズスコア',
           'ラーメン愛好家',
         ]}
       />
       <div className="card space-y-4">
-        <h1 className="text-2xl font-black text-ramen-soy">ランキング</h1>
+        <div>
+          <h1 className="text-2xl font-black text-ramen-soy">週間ランキング</h1>
+          <p className="mt-1 text-sm font-bold text-ramen-chili">
+            毎週月曜リセット{weekPeriod ? ` ・ 集計期間: ${weekPeriod}` : ''}
+          </p>
+        </div>
 
         {/* ドロップダウン: 4 種類のランキングカテゴリを切替 */}
         <div className="flex flex-wrap items-center gap-3">
@@ -130,8 +142,9 @@ export function Ranking(): JSX.Element {
         </div>
 
         <p className="text-sm text-ramen-soy/70">
-          各ユーザーの「{RANKING_CATEGORY_LABELS[rankingCategory]}」でのベストスコアで並びます。
-          新記録を出した時だけ順位が更新され、同点は達成日時が早い方が上位です。
+          各ユーザーの今週の「{RANKING_CATEGORY_LABELS[rankingCategory]}」でのベストスコアで並びます。
+          毎週月曜 0 時（日本時間）にリセットされるので、毎週 1 位を狙えます。
+          今週の自己ベストを更新した時だけ順位が更新され、同点は達成日時が早い方が上位です。
           上位 100 位を 1 ページ {PAGE_SIZE} 件ずつ表示。
         </p>
         {!currentUser ? (
@@ -168,7 +181,7 @@ export function Ranking(): JSX.Element {
 
       {rankingStatus === 'success' && ranking.length === 0 ? (
         <p className="card text-center text-ramen-soy/70">
-          このカテゴリではまだベストスコアの記録がありません。<br />
+          このカテゴリでは今週の記録がまだありません。<br />
           最初のプレイヤーになって 1 位を狙いましょう!
         </p>
       ) : null}
@@ -295,7 +308,11 @@ function RankingGuide(): JSX.Element {
           <li>
             学習モードの復習クイズは、同じ問題を繰り返し解けるため、ランキングには反映されません。
           </li>
-          <li>各ユーザーのベストスコアだけで順位を決め、自己ベストを更新したときに順位が更新されます。</li>
+          <li>
+            集計は 1 週間ごとです。日本時間の月曜 0 時から日曜 23 時 59 分までのプレイが対象で、
+            月曜 0 時に表がリセットされます。
+          </li>
+          <li>各ユーザーのその週のベストスコアだけで順位を決め、今週の自己ベストを更新したときに順位が更新されます。</li>
           <li>同点の場合は、そのスコアを先に達成したユーザーが上位になります。</li>
           <li>
             表には上位 100 位までを表示し、ユーザー名・都道府県・好きな店・ベストスコア・正解数・達成日が並びます。
@@ -485,6 +502,19 @@ function RankBadge({ rank }: { rank: number }): JSX.Element {
   if (rank === 2) return <span className="text-lg">🥈</span>;
   if (rank === 3) return <span className="text-lg">🥉</span>;
   return <span className="text-ramen-soy">{rank}</span>;
+}
+
+/** 今週の集計期間 (例: 10/19 (月) 〜 10/25 (日))。 */
+function formatWeekPeriod(nowMs: number): string {
+  const start = jstWeekStartMs(nowMs);
+  const fmt = (ms: number): string =>
+    new Date(ms).toLocaleDateString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+    });
+  return `${fmt(start)} 〜 ${fmt(start + 6 * 24 * 60 * 60 * 1000)}`;
 }
 
 function formatDate(iso: string): string {

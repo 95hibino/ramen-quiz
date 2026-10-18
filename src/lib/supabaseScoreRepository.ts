@@ -5,7 +5,8 @@
  * - `recordScore`: `quiz_scores` に INSERT (プレイ履歴) + `record_best_score` RPC
  *   (ベストスコア更新、rankingCategory が指定されたときのみ)
  * - `listScoresByUser`: `quiz_scores` を user_id で絞って新しい順 (マイページ用)
- * - `fetchRanking`: `quiz_ranking_by_category` ビューから指定カテゴリ分を取得
+ * - `fetchRanking`: `quiz_weekly_ranking_by_category` ビュー (§32 週間ランキング) から指定カテゴリ分を取得
+ * - `fetchMyRanking`: `get_my_weekly_ranking` RPC (§32) で今週の自分の順位
  *
  * Supabase 未接続時は空データを返し、`compositeScoreRepository` 側で
  * localScoreRepository にフォールバックする。
@@ -29,7 +30,7 @@ import { RateLimitError } from './supabasePhotoQuestionRepository';
 import { upsertPublicProfile } from './supabasePublicProfileRepository';
 import {
   getSupabaseClient,
-  QUIZ_RANKING_BY_CATEGORY_VIEW,
+  QUIZ_WEEKLY_RANKING_BY_CATEGORY_VIEW,
   QUIZ_SCORES_TABLE,
 } from './supabaseClient';
 
@@ -194,10 +195,10 @@ export const supabaseScoreRepository: ScoreRepository = {
   ): Promise<RankingEntry[]> {
     const client = getSupabaseClient();
     if (!client) return [];
-    // quiz_ranking_by_category ビューをカテゴリで絞り、
-    // インデックス (ranking_category, best_score DESC, achieved_at ASC) を活用してソート。
+    // §32 今週のビューをカテゴリで絞り、
+    // インデックス (week_start, ranking_category, best_score DESC, achieved_at ASC) を活用してソート。
     const { data, error } = await client
-      .from(QUIZ_RANKING_BY_CATEGORY_VIEW)
+      .from(QUIZ_WEEKLY_RANKING_BY_CATEGORY_VIEW)
       .select('*')
       .eq('ranking_category', category)
       .order('best_score', { ascending: false })
@@ -219,10 +220,10 @@ export const supabaseScoreRepository: ScoreRepository = {
   async fetchMyRanking(category: RankingCategory): Promise<MyRankingEntry | null> {
     const client = getSupabaseClient();
     if (!client) return null;
-    // §16 SECURITY DEFINER RPC。auth.uid() で自分の user_id を確定し、
-    // 自分の順位 (rank) と best_score 等をまとめて返す。
-    // 該当カテゴリでプレイしていなければ 0 行なので null 扱い。
-    const { data, error } = await client.rpc('get_my_ranking', {
+    // §32 SECURITY DEFINER RPC (§16 get_my_ranking の週間版)。auth.uid() で自分の user_id を確定し、
+    // 今週の自分の順位 (rank) と best_score 等をまとめて返す。
+    // 今週そのカテゴリでプレイしていなければ 0 行なので null 扱い。
+    const { data, error } = await client.rpc('get_my_weekly_ranking', {
       p_ranking_category: category,
     });
     if (error) {

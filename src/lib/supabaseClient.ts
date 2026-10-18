@@ -44,8 +44,10 @@ export const QUIZ_SCORES_TABLE = 'quiz_scores';
 /** 【legacy】 §10 の SUM ベースランキングビュー。§14 移行後は未使用。 */
 export const QUIZ_RANKING_VIEW = 'quiz_ranking';
 
-/** カテゴリ別ベストスコアランキングビュー (§14)。 */
+/** カテゴリ別ベストスコアランキングビュー (§14、全期間)。§32 で画面は週間版に切り替えた。 */
 export const QUIZ_RANKING_BY_CATEGORY_VIEW = 'quiz_ranking_by_category';
+/** §32 今週 (日本時間の月曜 0 時〜) のベストスコアのビュー。列は QUIZ_RANKING_BY_CATEGORY_VIEW と同じ。 */
+export const QUIZ_WEEKLY_RANKING_BY_CATEGORY_VIEW = 'quiz_weekly_ranking_by_category';
 
 /** カテゴリ別ベストスコアテーブル名 (§14)。 */
 export const QUIZ_BEST_SCORES_TABLE = 'quiz_best_scores';
