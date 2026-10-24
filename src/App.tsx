@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import * as Sentry from '@sentry/react';
 import { Header } from '@/components/common/Header';
@@ -70,6 +70,7 @@ const NewsWeeklyDetail = lazy(() =>
 );
 
 function AppContent(): JSX.Element {
+  const location = useLocation();
   const syncFromSession = useAuthStore((s) => s.syncFromSession);
 
   // 起動時に Supabase Auth のセッションと currentUser を同期する。
@@ -121,8 +122,11 @@ function AppContent(): JSX.Element {
       <UpdatePrompt />
       {/* Vercel Analytics: PV / 訪問者 / パス別トラフィックを収集。
           Vercel ダッシュボードの Analytics タブから確認できる。
-          個人特定情報は送信されず、Cookie も使用しない (プライバシー配慮)。 */}
-      <Analytics />
+          個人特定情報は送信されず、Cookie も使用しない (プライバシー配慮)。
+          route / path を渡して、ページが変わるたびにこちらから記録する。自動計測は pushState と
+          戻る・進むしか見ておらず、navigate(..., { replace: true }) で開く結果画面 (/result) が
+          1 回も記録されていなかった (2026-10-24 判明)。クエリ文字列は送らない。 */}
+      <Analytics route={location.pathname} path={location.pathname} />
     </div>
   );
 }
